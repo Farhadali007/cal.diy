@@ -178,7 +178,7 @@ services:
       - "127.0.0.1:3301:80"
 
   # Prisma Studio — profile-gated (opt-in only), loopback-only.
-  # Start with: docker compose -f docker-compose.dev.yml --profile tools up -d studio
+  # Start with: docker compose --env-file .env.dev -f docker-compose.dev.yml --profile tools up -d studio
   # Never enable outside the dev install.
   studio:
     container_name: voicero-caldev-studio

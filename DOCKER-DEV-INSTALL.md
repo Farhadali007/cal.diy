@@ -68,35 +68,45 @@ template (secrets via the approved flow only):
    `.env.*`, with `!.env.dev.example` excepting the template).
 2. `./pre-build-check.sh` — abort on any FAIL; confirm manually that
    no Ashemail/VOICERO deploy is in flight.
-3. `docker compose -f docker-compose.dev.yml up -d database redis`
+3. `docker compose --env-file .env.dev -f docker-compose.dev.yml up -d database redis`
    (build-time DB must be reachable; see step 4).
 4. Capped builds on the compose network so `database` resolves
    (guard 3; `docker compose build` has no memory flag, so build
    explicitly):
    ```sh
+   set -a; . ./.env.dev; set +a   # load DATABASE_URL, secrets for the build args below
    NET=$(docker network ls --filter name=voicero-caldev --format '{{.Name}}' | head -1)
    docker build --memory 8g --cpus 2.5 --network "$NET" \
      --build-arg MAX_OLD_SPACE_SIZE=4096 \
-     --build-arg DATABASE_URL="postgresql://<user>:<password>@database:5432/calendso" \
-     --build-arg DATABASE_DIRECT_URL="postgresql://<user>:<password>@database:5432/calendso" \
+     --build-arg DATABASE_URL="$DATABASE_URL" \
+     --build-arg DATABASE_DIRECT_URL="$DATABASE_URL" \
      --build-arg NEXT_PUBLIC_WEBAPP_URL=http://127.0.0.1:3300 \
      --build-arg NEXT_PUBLIC_API_V2_URL=http://127.0.0.1:3301/api/v2 \
      --build-arg NEXT_PUBLIC_DISABLE_SIGNUP=true \
      --build-arg CALCOM_TELEMETRY_DISABLED=1 \
-     --build-arg NEXTAUTH_SECRET="<from .env.dev>" \
-     --build-arg CALENDSO_ENCRYPTION_KEY="<from .env.dev>" \
+     --build-arg NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
+     --build-arg CALENDSO_ENCRYPTION_KEY="$CALENDSO_ENCRYPTION_KEY" \
      -t voicero-caldev-calcom:dev .
    docker build --memory 8g --cpus 2.5 --network "$NET" \
-     --build-arg DATABASE_URL="postgresql://<user>:<password>@database:5432/calendso" \
-     --build-arg DATABASE_DIRECT_URL="postgresql://<user>:<password>@database:5432/calendso" \
+     --build-arg DATABASE_URL="$DATABASE_URL" \
+     --build-arg DATABASE_DIRECT_URL="$DATABASE_URL" \
      -f apps/api/v2/Dockerfile -t voicero-caldev-calcom-api:dev .
    ```
    Never substitute a production `DATABASE_URL` here (guard R9).
    Never run these builds during a deploy or inside 03:30–04:30 /
    05:20–05:35 UTC (guard 4).
-5. `docker compose -f docker-compose.dev.yml up -d` (web + API v2).
+5. `docker compose --env-file .env.dev -f docker-compose.dev.yml up -d` (web + API v2).
 6. Verify: `curl http://127.0.0.1:3300` and the API v2 health
-   endpoint respond; `docker compose ps` shows all healthy.
+   endpoint respond; `docker compose --env-file .env.dev -f docker-compose.dev.yml ps` shows all healthy.
+
+> **Why `--env-file .env.dev` on every compose invocation:** compose
+> resolves `${VAR}` interpolation from the project env file (`.env` by
+> default) or the shell — it does NOT read `env_file:` for
+> interpolation (`env_file` only injects variables into containers at
+> runtime). Without `--env-file .env.dev`, the `${POSTGRES_USER:?}`
+> guards fail and compose refuses to start. Found at 1.8: plain
+> `docker compose -f docker-compose.dev.yml config` failed with
+> "required variable POSTGRES_USER is missing a value".
 
 ## Open items for 1.8 (not decided here)
 
@@ -110,8 +120,9 @@ template (secrets via the approved flow only):
 ## Validation (this run, sandbox)
 
 - `docker` is not installed in the sandbox, so `docker compose
-  config` could not run here — it must be run on VPS A at 1.8
-  before first use (noted as a 1.8 step, not claimed as done).
+  --env-file .env.dev -f docker-compose.dev.yml config` could not run
+  here — it must be run on VPS A at 1.8 before first use (noted as a
+  1.8 step, not claimed as done).
 - Instead validated with `validate-dev-install.py` (kept in this
   directory): YAML parses; every service has the exact guard 1–2
   caps; every published port is `127.0.0.1`-bound; no `0.0.0.0`;

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Validate dev-install/ files for task 1.7 (guard checks).
+"""Validate dev-install files for task 1.7 (guard checks).
 
-Run from ~/workspace/voicero-calendar/dev-install/:
+Run from the fork root:
     python3 validate-dev-install.py
-Exit 0 = all checks pass. Kept in the directory as the validation
+Exit 0 = all checks pass. Kept at the fork root as the validation
 evidence for 1.7; re-run on VPS A before first use alongside
-`docker compose -f docker-compose.dev.yml config`.
+`docker compose --env-file .env.dev -f docker-compose.dev.yml config`.
 """
 import re
 import sys
@@ -121,6 +121,16 @@ def main():
     check("DATABASE_URL uses database:5432, never localhost/prod",
           "@database:5432/calendso" in env_text and "localhost:5432" not in env_text
           and "localhost:5450" not in env_text)
+
+    # Compose interpolation reads the project env file, NOT env_file:
+    # every documented compose invocation must pass --env-file .env.dev
+    # (found at 1.8: plain `docker compose config` failed on ${POSTGRES_USER:?}).
+    doc_text = (HERE / "DOCKER-DEV-INSTALL.md").read_text()
+    check("procedure passes --env-file .env.dev to compose",
+          doc_text.count("docker compose --env-file .env.dev") >= 3,
+          f"found {doc_text.count('docker compose --env-file .env.dev')} invocations")
+    check("compose studio comment passes --env-file .env.dev",
+          "--env-file .env.dev" in compose_text)
 
     print("---")
     if failures:
