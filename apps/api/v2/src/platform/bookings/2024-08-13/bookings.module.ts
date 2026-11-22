@@ -43,6 +43,7 @@ import { MembershipsModule } from "@/modules/memberships/memberships.module";
 import { OAuthClientRepository } from "@/modules/oauth-clients/oauth-client.repository";
 import { OAuthClientUsersService } from "@/modules/oauth-clients/services/oauth-clients-users.service";
 import { OAuthFlowService } from "@/modules/oauth-clients/services/oauth-flow.service";
+import { OrganizationsModule } from "@/modules/organizations/organizations.module";
 import { PrismaModule } from "@/modules/prisma/prisma.module";
 import { ProfilesModule } from "@/modules/profiles/profiles.module";
 import { RedisModule } from "@/modules/redis/redis.module";
@@ -71,6 +72,7 @@ import { UsersModule } from "@/modules/users/users.module";
     RegularBookingModule,
     RecurringBookingModule,
     BookingAttendeesModule,
+    OrganizationsModule,
   ],
   providers: [
     TokensRepository,

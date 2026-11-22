@@ -1,6 +1,7 @@
 import { EventTypesModule_2024_06_14 } from "@/platform/event-types/event-types_2024_06_14/event-types.module";
 import { AvailableSlotsModule } from "@/lib/modules/available-slots.module";
 import { MembershipsModule } from "@/modules/memberships/memberships.module";
+import { OrganizationsModule } from "@/modules/organizations/organizations.module";
 import { PrismaModule } from "@/modules/prisma/prisma.module";
 import { SlotsController_2024_09_04 } from "@/modules/slots/slots-2024-09-04/controllers/slots.controller";
 import { SlotsInputService_2024_09_04 } from "@/modules/slots/slots-2024-09-04/services/slots-input.service";
@@ -20,6 +21,7 @@ import { Module } from "@nestjs/common";
     StripeModule,
     MembershipsModule,
     AvailableSlotsModule,
+    OrganizationsModule,
   ],
   providers: [
     SlotsRepository_2024_09_04,

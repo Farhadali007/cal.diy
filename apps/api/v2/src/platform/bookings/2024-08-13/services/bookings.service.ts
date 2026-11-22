@@ -57,6 +57,7 @@ import { EventTypeAccessService } from "@/modules/event-types/services/event-typ
 import { KyselyReadService } from "@/modules/kysely/kysely-read.service";
 import { OAuthClientRepository } from "@/modules/oauth-clients/oauth-client.repository";
 import { OAuthClientUsersService } from "@/modules/oauth-clients/services/oauth-clients-users.service";
+import { OrganizationsRepository } from "@/modules/organizations/index/organizations.repository";
 import { PrismaReadService } from "@/modules/prisma/prisma-read.service";
 import { TeamsEventTypesRepository } from "@/modules/teams/event-types/teams-event-types.repository";
 import { TeamsRepository } from "@/modules/teams/teams/teams.repository";
@@ -106,7 +107,8 @@ export class BookingsService_2024_08_13 {
     private readonly errorsBookingsService: ErrorsBookingsService_2024_08_13,
     private readonly regularBookingService: RegularBookingService,
     private readonly recurringBookingService: RecurringBookingService,
-    private readonly eventTypeAccessService: EventTypeAccessService
+    private readonly eventTypeAccessService: EventTypeAccessService,
+    private readonly organizationsRepository: OrganizationsRepository
   ) {}
 
   async createBooking(request: Request, body: CreateBookingInput, authUser: AuthOptionalUser) {
@@ -118,6 +120,19 @@ export class BookingsService_2024_08_13 {
       }
       if (!eventType) {
         this.errorsBookingsService.handleEventTypeToBeBookedNotFound(body);
+      }
+
+      // VOICERO Calendar Engine (tasks 2.7/2.8): no new bookings for a
+      // suspended org — the ultimate gate, covering every booking path
+      // through this service (regular, recurring, seated). Placed before
+      // the scheduling-type branching so no variant can bypass it.
+      // Cancellations and reschedules are NOT gated: an attendee must
+      // always be able to cancel, and rescheduling moves an existing
+      // booking rather than creating a new business relationship.
+      if (await this.organizationsRepository.isEventTypeOrgSuspended(eventType.id)) {
+        throw new ForbiddenException(
+          `Event type with id=${eventType.id} belongs to a suspended organization and cannot be booked`
+        );
       }
       const userIsEventTypeAdminOrOwner = authUser
         ? await this.eventTypeAccessService.userIsEventTypeAdminOrOwner(authUser, eventType)

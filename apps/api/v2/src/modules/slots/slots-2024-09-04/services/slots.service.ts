@@ -2,6 +2,7 @@ import { EventTypesRepository_2024_06_14 } from "@/platform/event-types/event-ty
 import { AvailableSlotsService } from "@/lib/services/available-slots.service";
 import { MembershipsRepository } from "@/modules/memberships/memberships.repository";
 import { MembershipsService } from "@/modules/memberships/services/memberships.service";
+import { OrganizationsRepository } from "@/modules/organizations/index/organizations.repository";
 import { TimeSlots } from "@/modules/slots/slots-2024-04-15/services/slots-output.service";
 import {
   SlotsInputService_2024_09_04,
@@ -51,15 +52,26 @@ export class SlotsService_2024_09_04 {
     private readonly membershipsService: MembershipsService,
     private readonly membershipsRepository: MembershipsRepository,
     private readonly teamsRepository: TeamsRepository,
-    private readonly availableSlotsService: AvailableSlotsService
+    private readonly availableSlotsService: AvailableSlotsService,
+    private readonly organizationsRepository: OrganizationsRepository
   ) {}
 
   private async fetchAndFormatSlots(queryTransformed: InternalSlotsQuery, format?: SlotFormat) {
     try {
-      const availableSlots: TimeSlots = await this.availableSlotsService.getAvailableSlots({
-        input: queryTransformed,
-        ctx: {},
-      });
+      // VOICERO Calendar Engine (tasks 2.7/2.8): a suspended org shows no
+      // availability. Returning empty slots (rather than an error) keeps the
+      // public slots endpoint graceful and does not reveal the suspension
+      // state to anonymous callers; the booking gate rejects any booking
+      // attempt for the same event type.
+      const isSuspended = await this.organizationsRepository.isEventTypeOrgSuspended(
+        queryTransformed.eventTypeId
+      );
+      const availableSlots: TimeSlots = isSuspended
+        ? { slots: {} }
+        : await this.availableSlotsService.getAvailableSlots({
+            input: queryTransformed,
+            ctx: {},
+          });
 
       const formatted = await this.slotsOutputService.getAvailableSlots(
         availableSlots,
@@ -102,6 +114,15 @@ export class SlotsService_2024_09_04 {
     const eventType = await this.eventTypeRepository.getEventTypeWithHosts(input.eventTypeId);
     if (!eventType) {
       throw new NotFoundException(`Event Type with ID=${input.eventTypeId} not found`);
+    }
+
+    // VOICERO Calendar Engine (tasks 2.7/2.8): no slot reservations for a
+    // suspended org — the booking gate would reject the booking anyway, so
+    // fail here instead of holding a slot that can never be booked.
+    if (await this.organizationsRepository.isEventTypeOrgSuspended(input.eventTypeId)) {
+      throw new ForbiddenException(
+        `Event type with ID=${input.eventTypeId} belongs to a suspended organization and cannot be booked`
+      );
     }
 
     if (input.reservationDuration && authUserId) {
@@ -277,6 +298,14 @@ export class SlotsService_2024_09_04 {
     const eventType = await this.eventTypeRepository.getEventTypeWithHosts(input.eventTypeId);
     if (!eventType) {
       throw new NotFoundException(`Event Type with ID=${input.eventTypeId} not found`);
+    }
+
+    // VOICERO Calendar Engine (tasks 2.7/2.8): same as reserveSlot — a held
+    // slot for a suspended org can never become a booking.
+    if (await this.organizationsRepository.isEventTypeOrgSuspended(input.eventTypeId)) {
+      throw new ForbiddenException(
+        `Event type with ID=${input.eventTypeId} belongs to a suspended organization and cannot be booked`
+      );
     }
 
     const startDate = DateTime.fromISO(input.slotStart, { zone: "utc" });
