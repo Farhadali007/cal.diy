@@ -1,9 +1,9 @@
 import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
+import { PermissionCheckService } from "@calcom/features/pbac/services/permission-check.service";
 import { UserRepository } from "@calcom/features/users/repositories/UserRepository";
 import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
 import prisma from "@calcom/prisma";
-import type { MembershipRole } from "@calcom/prisma/enums";
-import { PeriodType } from "@calcom/prisma/enums";
+import { MembershipRole, PeriodType } from "@calcom/prisma/enums";
 import type { CustomInputSchema } from "@calcom/prisma/zod-utils";
 import { EventTypeMetaDataSchema } from "@calcom/prisma/zod-utils";
 import { TRPCError } from "@trpc/server";
@@ -12,12 +12,6 @@ import authedProcedure from "../../../procedures/authedProcedure";
 import type { TUpdateInputSchema } from "./types";
 
 type PermissionString = string;
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
 
 type EventType = Awaited<ReturnType<EventTypeRepository["findAllByUpId"]>>[number];
 
@@ -133,6 +127,7 @@ export const createEventPbacProcedure = (
           },
           team: {
             select: {
+              parentId: true,
               members: {
                 select: {
                   userId: true,
@@ -158,7 +153,7 @@ export const createEventPbacProcedure = (
         }
       } else {
         // Team event - check PBAC/fallback permissions
-        const permissionCheckService = new PermissionCheckService();
+        const permissionCheckService = new PermissionCheckService(ctx.prisma);
         const hasPermission = await permissionCheckService.checkPermission({
           userId: ctx.user.id,
           teamId: event.teamId,
@@ -166,7 +161,21 @@ export const createEventPbacProcedure = (
           fallbackRoles,
         });
 
-        if (!hasPermission) {
+        // Org admins administer their org's teams even without a team
+        // membership. Mirrors EventTypeAccessService (API v2): the
+        // parent-org check is ADMIN/OWNER only, never the call site's
+        // fallbackRoles, so an org MEMBER gains no team rights via the org.
+        const hasParentOrgPermission =
+          !hasPermission && event.team?.parentId
+            ? await permissionCheckService.checkPermission({
+                userId: ctx.user.id,
+                teamId: event.team.parentId,
+                permission,
+                fallbackRoles: [MembershipRole.ADMIN, MembershipRole.OWNER],
+              })
+            : false;
+
+        if (!hasPermission && !hasParentOrgPermission) {
           throw new TRPCError({
             code: "FORBIDDEN",
             message: `Permission required: ${permission}`,
