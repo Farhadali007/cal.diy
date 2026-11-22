@@ -186,4 +186,47 @@ export class OrganizationsRepository {
       return team;
     });
   }
+
+  /**
+   * The ManagedOrganization link for a managed org, if any. A managed org
+   * has at most one manager (managedOrganizationId is @unique).
+   */
+  async findManagedOrganizationLink(managedOrganizationId: number) {
+    return this.dbRead.prisma.managedOrganization.findUnique({
+      where: { managedOrganizationId },
+      select: {
+        managerOrganizationId: true,
+        managedOrganizationId: true,
+        createdAt: true,
+        managerOrganization: { select: { id: true, name: true, slug: true } },
+        managedOrganization: { select: { id: true, name: true, slug: true } },
+      },
+    });
+  }
+
+  /** All orgs managed by the given org, oldest link first. */
+  async findManagedOrganizationLinks(managerOrganizationId: number) {
+    return this.dbRead.prisma.managedOrganization.findMany({
+      where: { managerOrganizationId },
+      select: {
+        managerOrganizationId: true,
+        managedOrganizationId: true,
+        createdAt: true,
+        managedOrganization: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  async createManagedOrganizationLink(managerOrganizationId: number, managedOrganizationId: number) {
+    return this.dbWrite.prisma.managedOrganization.create({
+      data: { managerOrganizationId, managedOrganizationId },
+    });
+  }
+
+  async deleteManagedOrganizationLink(managedOrganizationId: number) {
+    return this.dbWrite.prisma.managedOrganization.delete({
+      where: { managedOrganizationId },
+    });
+  }
 }
