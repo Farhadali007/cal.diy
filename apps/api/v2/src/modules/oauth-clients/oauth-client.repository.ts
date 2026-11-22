@@ -26,6 +26,29 @@ export class OAuthClientRepository {
     });
   }
 
+  // VOICERO Calendar Engine (task 2.7): same client row as getOAuthClient,
+  // plus the owning org's suspension flag so ApiAuthStrategy can reject
+  // credentials of a suspended org. A missing OrganizationSettings row
+  // (legacy orgs) reads as not suspended.
+  async getOAuthClientWithOrgSuspension(
+    clientId: string
+  ): Promise<(PlatformOAuthClient & { organization: { organizationSettings: { suspended: boolean } | null } }) | null> {
+    return this.dbRead.prisma.platformOAuthClient.findUnique({
+      where: { id: clientId },
+      include: {
+        organization: {
+          select: {
+            organizationSettings: {
+              select: {
+                suspended: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
   async getOAuthClientWithAuthTokens(tokenId: string, clientId: string, clientSecret: string) {
     return this.dbRead.prisma.platformOAuthClient.findUnique({
       where: {
@@ -46,6 +69,19 @@ export class OAuthClientRepository {
             owner: {
               select: {
                 id: true,
+              },
+            },
+          },
+        },
+        // VOICERO Calendar Engine (task 2.7): the owning org's suspension
+        // flag, so the exchange service can refuse to mint tokens for a
+        // suspended org. A missing OrganizationSettings row (legacy orgs)
+        // reads as not suspended.
+        organization: {
+          select: {
+            organizationSettings: {
+              select: {
+                suspended: true,
               },
             },
           },

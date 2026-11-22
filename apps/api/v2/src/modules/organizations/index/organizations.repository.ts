@@ -108,6 +108,35 @@ export class OrganizationsRepository {
     });
   }
 
+  // VOICERO Calendar Engine (task 2.7): org-level suspension state.
+  // Returns null when the org has no settings row (legacy orgs) — callers
+  // treat that as "not suspended".
+  async fetchOrgSuspension(organizationId: number) {
+    return this.dbRead.prisma.organizationSettings.findUnique({
+      where: {
+        organizationId,
+      },
+      select: {
+        suspended: true,
+        suspendedAt: true,
+        suspendedReason: true,
+        suspendedById: true,
+      },
+    });
+  }
+
+  async updateOrgSuspension(
+    organizationId: number,
+    data: { suspended: boolean; suspendedAt: Date | null; suspendedReason: string | null; suspendedById: number | null }
+  ) {
+    return this.dbWrite.prisma.organizationSettings.update({
+      where: {
+        organizationId,
+      },
+      data,
+    });
+  }
+
   async update(organizationId: number, data: Prisma.TeamUpdateInput) {
     return this.dbWrite.prisma.team.update({
       where: {

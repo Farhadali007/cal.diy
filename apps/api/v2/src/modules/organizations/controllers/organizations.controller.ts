@@ -24,7 +24,12 @@ import {
   UpdateOrganizationMemberInputDto,
 } from "../inputs/organization-members.input";
 import { LinkManagedOrganizationInputDto } from "../inputs/organization-ownership.input";
+import { UpdateOrganizationSuspensionInputDto } from "../inputs/organization-suspension.input";
 import { CreateOrganizationInputDto } from "../inputs/organizations.input";
+import {
+  OrganizationSuspensionDto,
+  OrganizationSuspensionResponseDto,
+} from "../outputs/organization-suspension.output";
 import { OrganizationOutputDto, OrganizationOutputResponseDto } from "../outputs/organization.output";
 import {
   OrganizationMemberDto,
@@ -46,6 +51,7 @@ import { OrganizationMembersService } from "@/modules/organizations/services/org
 import { OrganizationOAuthClientsService } from "@/modules/organizations/services/organization-oauth-clients.service";
 import { OrganizationOwnershipService } from "@/modules/organizations/services/organization-ownership.service";
 import { OrganizationsService } from "@/modules/organizations/services/organizations.service";
+import { OrganizationSuspensionService } from "@/modules/organizations/services/organization-suspension.service";
 import { UserWithProfile } from "@/modules/users/users.repository";
 
 @Controller({
@@ -60,7 +66,8 @@ export class OrganizationsController {
     private readonly organizationsService: OrganizationsService,
     private readonly organizationOwnershipService: OrganizationOwnershipService,
     private readonly organizationMembersService: OrganizationMembersService,
-    private readonly organizationOAuthClientsService: OrganizationOAuthClientsService
+    private readonly organizationOAuthClientsService: OrganizationOAuthClientsService,
+    private readonly organizationSuspensionService: OrganizationSuspensionService
   ) {}
 
   @Post("/")
@@ -268,6 +275,43 @@ export class OrganizationsController {
     return {
       status: SUCCESS_STATUS,
       data: plainToClass(PlatformOAuthClientDto, clients, { strategy: "excludeAll" }),
+    };
+  }
+
+  @Get("/:organizationId/suspension")
+  @ApiOperation({
+    summary: "Get the organization's suspension status",
+    description:
+      "Reads the org-level suspension state (task 2.7). Instance admins, members of the organization, and members of its managing organization can read it.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  async getSuspension(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @GetUser() user: UserWithProfile
+  ): Promise<OrganizationSuspensionResponseDto> {
+    const suspension = await this.organizationSuspensionService.getSuspension(user, organizationId);
+    return {
+      status: SUCCESS_STATUS,
+      data: plainToClass(OrganizationSuspensionDto, suspension, { strategy: "excludeAll" }),
+    };
+  }
+
+  @Patch("/:organizationId/suspension")
+  @ApiOperation({
+    summary: "Suspend or resume the organization",
+    description:
+      "Sets the org-level suspension state (task 2.7). While suspended, the org's OAuth client credentials are rejected at auth, so all API access for the business stops. Only instance admins or admins of the managing organization can suspend or resume — the org's own admins cannot lift their own suspension. Suspending requires a reason; resuming clears it.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  async updateSuspension(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @Body() body: UpdateOrganizationSuspensionInputDto,
+    @GetUser() user: UserWithProfile
+  ): Promise<OrganizationSuspensionResponseDto> {
+    const suspension = await this.organizationSuspensionService.updateSuspension(user, organizationId, body);
+    return {
+      status: SUCCESS_STATUS,
+      data: plainToClass(OrganizationSuspensionDto, suspension, { strategy: "excludeAll" }),
     };
   }
 }

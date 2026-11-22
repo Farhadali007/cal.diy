@@ -118,6 +118,13 @@ export class OAuthFlowService {
       throw new BadRequestException("Invalid OAuth Client.");
     }
 
+    // VOICERO Calendar Engine (task 2.7): refuse to mint tokens for a
+    // suspended org. The authorization code stays valid (it is not
+    // invalidated here), so the exchange can succeed after a resume.
+    if (oauthClient.organization.organizationSettings?.suspended) {
+      throw new BadRequestException("Organization is suspended; tokens cannot be issued.");
+    }
+
     const authorizationToken = oauthClient.authorizationTokens[0];
 
     if (!authorizationToken || !authorizationToken.owner.id) {

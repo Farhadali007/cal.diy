@@ -173,7 +173,7 @@ export class ApiAuthStrategy extends PassportStrategy(BaseStrategy, "api-auth") 
   }
 
   async oAuthClientStrategy(oAuthClientId: string, oAuthClientSecret: string, request: ApiAuthGuardRequest) {
-    const client = await this.oauthRepository.getOAuthClient(oAuthClientId);
+    const client = await this.oauthRepository.getOAuthClientWithOrgSuspension(oAuthClientId);
 
     if (!client) {
       throw new UnauthorizedException(
@@ -183,6 +183,16 @@ export class ApiAuthStrategy extends PassportStrategy(BaseStrategy, "api-auth") 
 
     if (client.secret !== oAuthClientSecret) {
       throw new UnauthorizedException("ApiAuthStrategy - oAuth client - Invalid client secret");
+    }
+
+    // VOICERO Calendar Engine (task 2.7): a suspended org's OAuth client
+    // credentials stop working entirely — checked right after the secret,
+    // before any further DB work. The platform admin API key is a different
+    // auth path (apiKeyStrategy) and is never blocked by suspension.
+    if (client.organization.organizationSettings?.suspended) {
+      throw new UnauthorizedException(
+        "ApiAuthStrategy - oAuth client - Organization is suspended; client credentials are not accepted"
+      );
     }
 
     const platformCreatorId =
