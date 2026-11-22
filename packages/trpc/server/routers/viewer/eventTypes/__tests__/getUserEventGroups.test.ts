@@ -50,6 +50,8 @@ vi.mock("@calcom/lib/defaultAvatarImage", () => ({
 }));
 
 describe("getUserEventGroups", () => {
+  const mockMembershipFindFirst = vi.fn();
+
   const mockUser = {
     id: 1,
     profile: {
@@ -74,11 +76,16 @@ describe("getUserEventGroups", () => {
 
   const mockCtx = {
     user: mockUser,
-    prisma: {} as PrismaClient,
+    prisma: {
+      membership: {
+        findFirst: mockMembershipFindFirst,
+      },
+    } as unknown as PrismaClient,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMembershipFindFirst.mockResolvedValue(null);
   });
 
   describe("Basic functionality", () => {
@@ -171,7 +178,7 @@ describe("getUserEventGroups", () => {
   });
 
   describe("Permissions", () => {
-    it("should grant permissions for team members (stub always returns true)", async () => {
+    it("should grant create permission for team admins", async () => {
       const { ProfileRepository } = await import("@calcom/features/profile/repositories/ProfileRepository");
 
       const mockTeamMembership = {
@@ -203,6 +210,7 @@ describe("getUserEventGroups", () => {
       vi.mocked(ProfileRepository.findByUpIdWithAuth).mockResolvedValue(mockProfile);
       mockFindAllByUpIdIncludeTeam.mockResolvedValue([mockTeamMembership]);
       mockFilterTeamsByEventTypeReadPermission.mockResolvedValue([mockTeamMembership]);
+      mockMembershipFindFirst.mockResolvedValue({ role: MembershipRole.ADMIN });
 
       const result = await getUserEventGroups({
         ctx: mockCtx,
@@ -211,6 +219,50 @@ describe("getUserEventGroups", () => {
 
       expect(result.teamPermissions[100]).toMatchObject({
         canCreateEventType: true,
+      });
+    });
+
+    it("should deny create permission for plain team members", async () => {
+      const { ProfileRepository } = await import("@calcom/features/profile/repositories/ProfileRepository");
+
+      const mockTeamMembership = {
+        id: 1,
+        teamId: 100,
+        userId: 1,
+        accepted: true,
+        role: MembershipRole.MEMBER,
+        customRoleId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        team: {
+          id: 100,
+          name: "Test Team",
+          slug: "test-team",
+          logoUrl: null,
+          parentId: null,
+          parent: null,
+          metadata: {},
+        },
+      } as unknown as NonNullable<
+        Awaited<
+          ReturnType<
+            typeof import("@calcom/features/membership/repositories/MembershipRepository").MembershipRepository.findAllByUpIdIncludeTeam
+          >
+        >
+      >[0];
+
+      vi.mocked(ProfileRepository.findByUpIdWithAuth).mockResolvedValue(mockProfile);
+      mockFindAllByUpIdIncludeTeam.mockResolvedValue([mockTeamMembership]);
+      mockFilterTeamsByEventTypeReadPermission.mockResolvedValue([mockTeamMembership]);
+      mockMembershipFindFirst.mockResolvedValue({ role: MembershipRole.MEMBER });
+
+      const result = await getUserEventGroups({
+        ctx: mockCtx,
+        input: null,
+      });
+
+      expect(result.teamPermissions[100]).toMatchObject({
+        canCreateEventType: false,
       });
     });
   });
