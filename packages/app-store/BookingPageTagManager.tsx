@@ -1,14 +1,37 @@
-import Script from "next/script";
-
 import { getEventTypeAppData } from "@calcom/app-store/_utils/getEventTypeAppData";
 import { appStoreMetadata } from "@calcom/app-store/bookerAppsMetaData";
 import type { Tag } from "@calcom/app-store/types";
 import { sdkActionManager } from "@calcom/lib/sdk-event";
 import type { AppMeta } from "@calcom/types/App";
-
+import Script from "next/script";
 import type { appDataSchemas } from "./apps.schemas.generated";
 
 const PushEventPrefix = "cal_analytics_app_";
+
+// CVE-2026-57858 (stored XSS): template values substituted into analytics tag scripts come
+// from event-type app data, which an event-type owner controls. Before this fix they were
+// interpolated unsanitized into dangerouslySetInnerHTML script content, <Script src> and
+// script attributes on the public booking page, so a malicious tracking ID could execute
+// arbitrary JavaScript in every visitor's browser. A value is substituted only if it is
+// identifier-like (tracking/site/client IDs, event names) or a well-formed http(s) URL
+// without characters that could break out of a JS string, URL or HTML attribute. Anything
+// else is left unsubstituted, so the script renders inert instead of executing.
+const SAFE_TAG_VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const UNSAFE_URL_CHARS = /[\s<>"'`\\]/;
+
+export function isSafeTagTemplateValue(value: string): boolean {
+  if (SAFE_TAG_VALUE_PATTERN.test(value)) {
+    return true;
+  }
+  // URL-shaped values: self-hosted analytics hosts and script URLs (e.g. PostHog
+  // API_HOST, Matomo/Plausible/Umami/Databuddy URLs).
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") && !UNSAFE_URL_CHARS.test(value);
+  } catch {
+    return false;
+  }
+}
 
 // AnalyticApp has appData.tag always set
 type AnalyticApp = Omit<AppMeta, "appData"> & {
@@ -112,10 +135,13 @@ export default function BookingPageTagManager({
             const variableName = matches[1];
             if (appDataRecord[variableName]) {
               // Replace if value is available. It can possible not be a template variable that just matches the regex.
-              val = val.replace(
-                new RegExp(`{${variableName}}`, "g"),
-                String(appDataRecord[variableName])
-              ) as NonNullable<T>;
+              const rawValue = String(appDataRecord[variableName]);
+              // CVE-2026-57858: never substitute a value that could break out of the script
+              // content, src URL or attribute it is interpolated into.
+              if (isSafeTagTemplateValue(rawValue)) {
+                // Use a replacement function so `$` patterns in the value can't alter the result.
+                val = val.replace(new RegExp(`{${variableName}}`, "g"), () => rawValue) as NonNullable<T>;
+              }
             }
           }
           return val;
