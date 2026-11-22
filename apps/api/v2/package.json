@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "Platform API for Cal.diy",
   "author": "Cal.com, Inc.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "build": "nest build",

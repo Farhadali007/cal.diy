@@ -233,5 +233,6 @@
   "syncpack": {
     "filter": "^(?!@calcom).*",
     "semverRange": ""
-  }
+  },
+  "license": "MIT"
 }
