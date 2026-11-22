@@ -53,6 +53,9 @@ import { Module } from "@nestjs/common";
     InputEventTypesService_2024_06_14,
     OutputEventTypesService_2024_06_14,
     EventTypeAccessService,
+    // VOICERO Calendar Engine (task 2.8): the org wiring endpoints return the
+    // same event-type shape as the standard endpoint, via this pipe.
+    EventTypeResponseTransformPipe,
   ],
 })
 export class EventTypesModule_2024_06_14 {}

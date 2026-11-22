@@ -137,6 +137,63 @@ export class OrganizationsRepository {
     });
   }
 
+  // VOICERO Calendar Engine (task 2.8): is the org that owns this event
+  // type suspended? Resolves ownership in order: team event type → the team
+  // itself if it is an org, else its parent org; user event type → the
+  // event type's profile org, else the owner's main org (user.organizationId).
+  // Returns false when the event type does not exist, is not org-owned, or
+  // the org has no settings row — those cases have no suspension state, so
+  // failing open is correct, not a bypass.
+  async isEventTypeOrgSuspended(eventTypeId: number): Promise<boolean> {
+    const eventType = await this.dbRead.prisma.eventType.findUnique({
+      where: {
+        id: eventTypeId,
+      },
+      include: {
+        team: {
+          select: {
+            id: true,
+            parentId: true,
+            isOrganization: true,
+          },
+        },
+        profile: {
+          select: {
+            organizationId: true,
+          },
+        },
+        owner: {
+          select: {
+            organizationId: true,
+          },
+        },
+      },
+    });
+    if (!eventType) {
+      return false;
+    }
+    let organizationId: number | null = null;
+    if (eventType.team) {
+      organizationId = eventType.team.isOrganization ? eventType.team.id : eventType.team.parentId;
+    } else if (eventType.profile) {
+      organizationId = eventType.profile.organizationId;
+    } else {
+      organizationId = eventType.owner?.organizationId ?? null;
+    }
+    if (!organizationId) {
+      return false;
+    }
+    const settings = await this.dbRead.prisma.organizationSettings.findUnique({
+      where: {
+        organizationId,
+      },
+      select: {
+        suspended: true,
+      },
+    });
+    return settings?.suspended ?? false;
+  }
+
   async update(organizationId: number, data: Prisma.TeamUpdateInput) {
     return this.dbWrite.prisma.team.update({
       where: {

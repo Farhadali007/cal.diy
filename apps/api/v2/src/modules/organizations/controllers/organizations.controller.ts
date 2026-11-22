@@ -25,6 +25,10 @@ import {
 } from "../inputs/organization-members.input";
 import { LinkManagedOrganizationInputDto } from "../inputs/organization-ownership.input";
 import { UpdateOrganizationSuspensionInputDto } from "../inputs/organization-suspension.input";
+import {
+  CreateOrganizationEventTypeInputDto,
+  CreateOrganizationScheduleInputDto,
+} from "../inputs/organization-wiring.input";
 import { CreateOrganizationInputDto } from "../inputs/organizations.input";
 import {
   OrganizationSuspensionDto,
@@ -52,7 +56,11 @@ import { OrganizationOAuthClientsService } from "@/modules/organizations/service
 import { OrganizationOwnershipService } from "@/modules/organizations/services/organization-ownership.service";
 import { OrganizationsService } from "@/modules/organizations/services/organizations.service";
 import { OrganizationSuspensionService } from "@/modules/organizations/services/organization-suspension.service";
+import { OrganizationWiringService } from "@/modules/organizations/services/organization-wiring.service";
 import { UserWithProfile } from "@/modules/users/users.repository";
+import { CreateScheduleOutput_2024_06_11 } from "@calcom/platform-types";
+import { CreateEventTypeOutput_2024_06_14 } from "@/platform/event-types/event-types_2024_06_14/outputs/create-event-type.output";
+import { EventTypeResponseTransformPipe } from "@/platform/event-types/event-types_2024_06_14/pipes/event-type-response.transformer";
 
 @Controller({
   path: "/v2/organizations",
@@ -67,7 +75,9 @@ export class OrganizationsController {
     private readonly organizationOwnershipService: OrganizationOwnershipService,
     private readonly organizationMembersService: OrganizationMembersService,
     private readonly organizationOAuthClientsService: OrganizationOAuthClientsService,
-    private readonly organizationSuspensionService: OrganizationSuspensionService
+    private readonly organizationSuspensionService: OrganizationSuspensionService,
+    private readonly organizationWiringService: OrganizationWiringService,
+    private readonly eventTypeResponseTransformPipe: EventTypeResponseTransformPipe
   ) {}
 
   @Post("/")
@@ -312,6 +322,44 @@ export class OrganizationsController {
     return {
       status: SUCCESS_STATUS,
       data: plainToClass(OrganizationSuspensionDto, suspension, { strategy: "excludeAll" }),
+    };
+  }
+
+  @Post("/:organizationId/schedules")
+  @ApiOperation({
+    summary: "Get or create the default schedule for an org member",
+    description:
+      "Returns the member's existing default schedule when one exists (managed-user creation already creates one when a timeZone is passed); only creates a new default schedule (Monday–Friday 9AM–5PM in the given timezone) when none exists. Never creates a duplicate default schedule. Only instance admins or admins of the organization can wire schedules.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  async getOrCreateDefaultSchedule(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @Body() body: CreateOrganizationScheduleInputDto,
+    @GetUser() user: UserWithProfile
+  ): Promise<CreateScheduleOutput_2024_06_11> {
+    const schedule = await this.organizationWiringService.getOrCreateDefaultSchedule(user, organizationId, body);
+    return {
+      status: SUCCESS_STATUS,
+      data: schedule,
+    };
+  }
+
+  @Post("/:organizationId/event-types")
+  @ApiOperation({
+    summary: "Create an event type owned by an org member",
+    description:
+      "Creates a user event type owned by the given org member (normally the managed user created at provisioning) — unlike the generic event-type endpoint, which always creates for the authenticated user. Only instance admins or admins of the organization can wire event types. When scheduleId is omitted, the member's default schedule is used.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  async createEventTypeForMember(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @Body() body: CreateOrganizationEventTypeInputDto,
+    @GetUser() user: UserWithProfile
+  ): Promise<CreateEventTypeOutput_2024_06_14> {
+    const eventType = await this.organizationWiringService.createEventTypeForMember(user, organizationId, body);
+    return {
+      status: SUCCESS_STATUS,
+      data: this.eventTypeResponseTransformPipe.transform(eventType),
     };
   }
 }

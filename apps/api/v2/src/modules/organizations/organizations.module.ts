@@ -18,6 +18,7 @@ import { OrganizationMembersService } from "@/modules/organizations/services/org
 import { OrganizationOAuthClientsService } from "@/modules/organizations/services/organization-oauth-clients.service";
 import { OrganizationOwnershipService } from "@/modules/organizations/services/organization-ownership.service";
 import { OrganizationSuspensionService } from "@/modules/organizations/services/organization-suspension.service";
+import { OrganizationWiringService } from "@/modules/organizations/services/organization-wiring.service";
 import { OrganizationsService } from "@/modules/organizations/services/organizations.service";
 import { PrismaModule } from "@/modules/prisma/prisma.module";
 import { RedisModule } from "@/modules/redis/redis.module";
@@ -52,6 +53,7 @@ import { SchedulesService_2024_06_11 } from "@/platform/schedules/schedules_2024
     OrganizationMembersService,
     OrganizationOAuthClientsService,
     OrganizationSuspensionService,
+    OrganizationWiringService,
     EmailService,
     UserOOOService,
     UserOOORepository,
@@ -77,6 +79,7 @@ import { SchedulesService_2024_06_11 } from "@/platform/schedules/schedules_2024
     OrganizationMembersService,
     OrganizationOAuthClientsService,
     OrganizationSuspensionService,
+    OrganizationWiringService,
   ],
 })
 export class OrganizationsModule {}
