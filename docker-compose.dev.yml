@@ -1,0 +1,211 @@
+# VOICERO Cal.diy dev install — guarded Compose file (task 1.7)
+#
+# Committed at the fork root next to the upstream `Dockerfile`, with
+# `.env.dev` (created from `.env.dev.example`) beside it. Do NOT run the
+# upstream stock `docker-compose.yml` unmodified (IMPLEMENTATION-PLAN.md
+# §C guard 5).
+#
+# Baseline: upstream Cal.diy @ ae027bb70e694e2d2c44569f398d6cbcee0389b1
+# (2026-11-13T19:35:06Z). Source compose read 2026-11-22 via public
+# GitHub raw read; every guard below maps to IMPLEMENTATION-PLAN.md §C.
+#
+# Guard map:
+#  (1) memory caps on every service: web 2g, PG 1g, Redis 256m, API v2 1g
+#  (2) CPU caps: web 1.5, PG 0.5, Redis 0.25, API v2 0.5
+#  (3) build caps + reduced heap: MAX_OLD_SPACE_SIZE=4096 build arg;
+#      the capped build commands are in README.md (compose build has no
+#      memory flag, so VPS A builds use explicit `docker build` calls)
+#  (5) loopback-only remapped ports: web 127.0.0.1:3300, API v2
+#      127.0.0.1:3301, Redis 127.0.0.1:6381, Studio 127.0.0.1:5555;
+#      Postgres publishes NO host port (internal-only); never 0.0.0.0
+#  (6) separate project `voicero-caldev`, own network, project-prefixed
+#      container/volume names; never joins an existing network
+#  (7) pinned image tags (postgres:16-alpine, redis:7-alpine); web/API
+#      images are built from source (no published Cal.diy tags exist)
+#  (8) json-file logging capped at 10m x 3 files per container
+#  (9) run pre-build-check.sh before every build; abort on any failure
+#  No seed: there is no seed service and no seed env var; the dev DB
+#  starts empty. Signup disabled: NEXT_PUBLIC_DISABLE_SIGNUP=true
+#  (first-admin creation with signup disabled is an open item for 1.8 —
+#  see README.md; do NOT re-enable public signup to work around it
+#  without recording the decision).
+
+name: voicero-caldev
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+volumes:
+  voicero-caldev-database-data:
+  voicero-caldev-redis-data:
+
+networks:
+  voicero-caldev:
+    name: voicero-caldev
+
+services:
+  database:
+    container_name: voicero-caldev-database
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - voicero-caldev-database-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER must be set in .env.dev}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env.dev}
+      - POSTGRES_DB=${POSTGRES_DB:-calendso}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-calendso}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "0.50"
+    logging: *default-logging
+    networks:
+      - voicero-caldev
+
+  redis:
+    container_name: voicero-caldev-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - voicero-caldev-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
+    logging: *default-logging
+    networks:
+      - voicero-caldev
+    ports:
+      - "127.0.0.1:6381:6379"
+
+  calcom:
+    container_name: voicero-caldev-calcom
+    image: voicero-caldev-calcom:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_WEBAPP_URL: ${NEXT_PUBLIC_WEBAPP_URL}
+        NEXT_PUBLIC_API_V2_URL: ${NEXT_PUBLIC_API_V2_URL}
+        NEXT_PUBLIC_DISABLE_SIGNUP: "true"
+        CALCOM_TELEMETRY_DISABLED: "1"
+        NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+        CALENDSO_ENCRYPTION_KEY: ${CALENDSO_ENCRYPTION_KEY}
+        DATABASE_URL: ${DATABASE_URL}
+        DATABASE_DIRECT_URL: ${DATABASE_URL}
+        MAX_OLD_SPACE_SIZE: "4096"
+    restart: unless-stopped
+    env_file: .env.dev
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_DIRECT_URL=${DATABASE_URL}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - CALENDSO_ENCRYPTION_KEY=${CALENDSO_ENCRYPTION_KEY}
+      - NEXT_PUBLIC_DISABLE_SIGNUP=true
+      - CALCOM_TELEMETRY_DISABLED=1
+      - NODE_ENV=production
+    depends_on:
+      database:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "1.50"
+    logging: *default-logging
+    networks:
+      - voicero-caldev
+    ports:
+      - "127.0.0.1:3300:3000"
+
+  calcom-api:
+    container_name: voicero-caldev-calcom-api
+    image: voicero-caldev-calcom-api:dev
+    build:
+      context: .
+      dockerfile: apps/api/v2/Dockerfile
+      args:
+        DATABASE_URL: ${DATABASE_URL}
+        DATABASE_DIRECT_URL: ${DATABASE_URL}
+    restart: unless-stopped
+    env_file: .env.dev
+    environment:
+      - NODE_ENV=production
+      - API_PORT=80
+      - API_URL=http://127.0.0.1:3301
+      - WEB_APP_URL=http://127.0.0.1:3300
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_READ_URL=${DATABASE_URL}
+      - DATABASE_WRITE_URL=${DATABASE_URL}
+      - DATABASE_DIRECT_URL=${DATABASE_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - IS_E2E=false
+      - REWRITE_API_V2_PREFIX=true
+      - IS_TEAM_BILLING_ENABLED=false
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "0.50"
+    logging: *default-logging
+    networks:
+      - voicero-caldev
+    ports:
+      - "127.0.0.1:3301:80"
+
+  # Prisma Studio — profile-gated (opt-in only), loopback-only.
+  # Start with: docker compose -f docker-compose.dev.yml --profile tools up -d studio
+  # Never enable outside the dev install.
+  studio:
+    container_name: voicero-caldev-studio
+    image: voicero-caldev-calcom:dev
+    profiles:
+      - tools
+    restart: "no"
+    env_file: .env.dev
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_DIRECT_URL=${DATABASE_URL}
+    depends_on:
+      database:
+        condition: service_healthy
+      calcom:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.25"
+    logging: *default-logging
+    networks:
+      - voicero-caldev
+    ports:
+      - "127.0.0.1:5555:5555"
+    command:
+      - npx
+      - prisma
+      - studio
