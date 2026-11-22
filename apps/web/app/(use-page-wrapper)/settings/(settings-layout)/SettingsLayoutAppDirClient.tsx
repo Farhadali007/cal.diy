@@ -1,8 +1,7 @@
 "use client";
 
-import { HAS_ORG_OPT_IN_FEATURES } from "@calcom/features/feature-opt-in/config";
 import type { TeamFeatures } from "@calcom/features/flags/config";
-import { IS_CALCOM, WEBAPP_URL } from "@calcom/lib/constants";
+import { IS_CALCOM } from "@calcom/lib/constants";
 import { getPlaceholderAvatar } from "@calcom/lib/defaultAvatarImage";
 import { getUserAvatarUrl } from "@calcom/lib/getAvatarUrl";
 import { useIsStandalone } from "@calcom/lib/hooks/useIsStandalone";
@@ -26,15 +25,7 @@ import type { ComponentProps } from "react";
 import React, { useEffect, useMemo, useState } from "react";
 import Shell from "~/shell/Shell";
 
-const getTabs = (
-  orgBranding: {
-    id?: number;
-    slug?: string;
-    name?: string;
-    logoUrl?: string | null;
-    fullDomain?: string | null;
-  } | null
-) => {
+const getTabs = () => {
   const tabs: VerticalTabItemProps[] = [
     {
       name: "my_account",
@@ -142,48 +133,20 @@ const getTabs = (
           trackingMetadata: { section: "organization", page: "general" },
         },
         {
-          name: "guest_notifications",
-          href: "/settings/organizations/guest-notifications",
-        },
-        ...(orgBranding
-          ? [
-              {
-                name: "members",
-                href: `${WEBAPP_URL}/settings/organizations/${orgBranding?.slug}/members`,
-                isExternalLink: true,
-                trackingMetadata: { section: "organization", page: "members" },
-              },
-            ]
-          : []),
-        {
-          name: "privacy_and_security",
-          href: "/settings/organizations/privacy",
-          trackingMetadata: { section: "organization", page: "privacy_and_security" },
+          name: "members",
+          href: "/settings/organizations/members",
+          trackingMetadata: { section: "organization", page: "members" },
         },
         {
-          name: "SSO",
-          href: "/settings/organizations/sso",
-          trackingMetadata: { section: "organization", page: "sso" },
-        },
-        {
-          name: "directory_sync",
-          href: "/settings/organizations/dsync",
-          trackingMetadata: { section: "organization", page: "directory_sync" },
+          name: "managed_organizations",
+          href: "/settings/organizations/managed-organizations",
+          trackingMetadata: { section: "organization", page: "managed_organizations" },
         },
         {
           name: "api_docs",
           href: "/docs",
           trackingMetadata: { section: "organization", page: "api_docs" },
         },
-        ...(HAS_ORG_OPT_IN_FEATURES
-          ? [
-              {
-                name: "features",
-                href: "/settings/organizations/features",
-                trackingMetadata: { section: "organization", page: "features" },
-              },
-            ]
-          : []),
       ],
     },
     {
@@ -253,36 +216,19 @@ const getTabs = (
 // The following keys are assigned to admin only
 const adminRequiredKeys = ["admin"];
 const organizationRequiredKeys = ["organization"];
-const organizationAdminKeys = [
-  "privacy",
-  "privacy_and_security",
-  "SSO",
-  "directory_sync",
-  "delegation_credential",
-];
 
 interface SettingsPermissions {
-  canViewRoles?: boolean;
-  canViewOrganizationBilling?: boolean;
   canUpdateOrganization?: boolean;
 }
 
-const useTabs = ({
-  isDelegationCredentialEnabled,
-  isPbacEnabled,
-  permissions,
-}: {
-  isDelegationCredentialEnabled: boolean;
-  isPbacEnabled: boolean;
-  permissions?: SettingsPermissions;
-}) => {
+const useTabs = ({ permissions }: { permissions?: SettingsPermissions }) => {
   const session = useSession();
   const { data: user } = trpc.viewer.me.get.useQuery({ includePasswordAdded: true });
-  const orgBranding = null as { id?: number; slug?: string; name?: string; logoUrl?: string | null } | null;
+  const { data: orgBranding } = trpc.viewer.organizations.getCurrentOrg.useQuery();
   const isAdmin = session.data?.user.role === UserPermissionRole.ADMIN;
 
   const processTabsMemod = useMemo(() => {
-    const processedTabs = getTabs(orgBranding).map((tab) => {
+    const processedTabs = getTabs().map((tab) => {
       if (tab.href === "/settings/my-account") {
         return {
           ...tab,
@@ -291,58 +237,8 @@ const useTabs = ({
           avatar: getUserAvatarUrl(user),
         };
       } else if (tab.href === "/settings/organizations") {
-        const newArray = (tab?.children ?? []).filter(
-          (child) => permissions?.canUpdateOrganization || !organizationAdminKeys.includes(child.name)
-        );
-
-        // Add delegation-credential menu item only if feature flag is enabled
-        if (isDelegationCredentialEnabled) {
-          newArray.push({
-            name: "delegation_credential",
-            href: "/settings/organizations/delegation-credential",
-            trackingMetadata: { section: "organization", page: "delegation_credential" },
-          });
-        }
-
-        // Add pbac menu item - show opt-in page if not enabled, regular page if enabled
-        if (isPbacEnabled) {
-          if (permissions?.canViewRoles) {
-            newArray.push({
-              name: "roles_and_permissions",
-              href: "/settings/organizations/roles",
-              trackingMetadata: { section: "organization", page: "roles_and_permissions" },
-            });
-          }
-
-          if (permissions?.canViewOrganizationBilling) {
-            newArray.push({
-              name: "billing",
-              href: "/settings/organizations/billing",
-              trackingMetadata: { section: "organization", page: "billing" },
-            });
-          }
-        } else {
-          if (permissions?.canUpdateOrganization) {
-            newArray.push({
-              name: "billing",
-              href: "/settings/organizations/billing",
-              trackingMetadata: { section: "organization", page: "billing" },
-            });
-          }
-          // Show roles page (modal will appear if PBAC not enabled)
-          if (permissions?.canUpdateOrganization) {
-            newArray.push({
-              name: "roles",
-              href: "/settings/organizations/roles",
-              isBadged: true, // Show "New" badge,
-              trackingMetadata: { section: "organization", page: "roles" },
-            });
-          }
-        }
-
         return {
           ...tab,
-          children: newArray,
           name: orgBranding?.name || "organization",
           avatar: getPlaceholderAvatar(orgBranding?.logoUrl, orgBranding?.name),
         };
@@ -373,7 +269,7 @@ const useTabs = ({
       if (isAdmin) return true;
       return !adminRequiredKeys.includes(tab.name);
     });
-  }, [isAdmin, orgBranding, user, isDelegationCredentialEnabled, isPbacEnabled, permissions]);
+  }, [isAdmin, orgBranding, user, permissions]);
 
   return processTabsMemod;
 };
@@ -409,11 +305,7 @@ const SettingsSidebarContainer = ({
 }: SettingsSidebarContainerProps) => {
   const { t } = useLocale();
 
-  const tabsWithPermissions = useTabs({
-    isDelegationCredentialEnabled: false,
-    isPbacEnabled: false,
-    permissions,
-  });
+  const tabsWithPermissions = useTabs({ permissions });
 
   return (
     <nav
