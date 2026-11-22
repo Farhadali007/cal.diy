@@ -14,12 +14,8 @@ import type {
 import { WatchlistOperationsService } from "./WatchlistOperationsService";
 
 type PermissionString = string;
-class PermissionCheckService {
-  constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
-}
+
+import type { PermissionCheckService } from "@calcom/features/pbac/services/permission-check.service";
 
 type Deps = {
   watchlistRepo: WatchlistRepository;
