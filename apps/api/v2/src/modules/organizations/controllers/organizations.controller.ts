@@ -1,10 +1,19 @@
 import { SUCCESS_STATUS } from "@calcom/platform-constants";
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiHeader, ApiOperation, ApiParam, ApiTags as DocsTags } from "@nestjs/swagger";
 import { plainToClass } from "class-transformer";
+import {
+  AddOrganizationMemberInputDto,
+  UpdateOrganizationMemberInputDto,
+} from "../inputs/organization-members.input";
 import { LinkManagedOrganizationInputDto } from "../inputs/organization-ownership.input";
 import { CreateOrganizationInputDto } from "../inputs/organizations.input";
 import { OrganizationOutputDto, OrganizationOutputResponseDto } from "../outputs/organization.output";
+import {
+  OrganizationMemberDto,
+  OrganizationMemberResponseDto,
+  OrganizationMembersResponseDto,
+} from "../outputs/organization-members.output";
 import {
   ManagedOrganizationLinkDto,
   ManagedOrganizationLinkResponseDto,
@@ -14,6 +23,7 @@ import { API_VERSIONS_VALUES } from "@/lib/api-versions";
 import { API_KEY_OR_ACCESS_TOKEN_HEADER } from "@/lib/docs/headers";
 import { GetUser } from "@/modules/auth/decorators/get-user/get-user.decorator";
 import { ApiAuthGuard } from "@/modules/auth/guards/api-auth/api-auth.guard";
+import { OrganizationMembersService } from "@/modules/organizations/services/organization-members.service";
 import { OrganizationOwnershipService } from "@/modules/organizations/services/organization-ownership.service";
 import { OrganizationsService } from "@/modules/organizations/services/organizations.service";
 import { UserWithProfile } from "@/modules/users/users.repository";
@@ -28,7 +38,8 @@ import { UserWithProfile } from "@/modules/users/users.repository";
 export class OrganizationsController {
   constructor(
     private readonly organizationsService: OrganizationsService,
-    private readonly organizationOwnershipService: OrganizationOwnershipService
+    private readonly organizationOwnershipService: OrganizationOwnershipService,
+    private readonly organizationMembersService: OrganizationMembersService
   ) {}
 
   @Post("/")
@@ -116,6 +127,84 @@ export class OrganizationsController {
     return {
       status: SUCCESS_STATUS,
       data: plainToClass(OrganizationOutputDto, manager, { strategy: "excludeAll" }),
+    };
+  }
+
+  @Get("/:organizationId/members")
+  @ApiOperation({
+    summary: "List organization members",
+    description:
+      "Lists the members of the organization with their roles. Only instance admins or admins of the organization can list members.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  async listMembers(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @GetUser() user: UserWithProfile
+  ): Promise<OrganizationMembersResponseDto> {
+    const members = await this.organizationMembersService.listMembers(user, organizationId);
+    return {
+      status: SUCCESS_STATUS,
+      data: members.map((member) => plainToClass(OrganizationMemberDto, member, { strategy: "excludeAll" })),
+    };
+  }
+
+  @Post("/:organizationId/members")
+  @ApiOperation({
+    summary: "Add a member to the organization",
+    description:
+      "Attaches an existing user to the organization with the given role (MEMBER or ADMIN). The membership is auto-accepted: there is no invite-accept flow in the fork. Only instance admins or admins of the organization can add members. New users are created through the managed-users endpoint, not here.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  async addMember(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @Body() body: AddOrganizationMemberInputDto,
+    @GetUser() user: UserWithProfile
+  ): Promise<OrganizationMemberResponseDto> {
+    const member = await this.organizationMembersService.addMember(user, organizationId, body);
+    return {
+      status: SUCCESS_STATUS,
+      data: plainToClass(OrganizationMemberDto, member, { strategy: "excludeAll" }),
+    };
+  }
+
+  @Patch("/:organizationId/members/:userId")
+  @ApiOperation({
+    summary: "Change a member's role",
+    description:
+      "Changes a member's role between MEMBER and ADMIN. OWNER cannot be assigned here, and the last OWNER cannot be demoted. Only instance admins or admins of the organization can change roles.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  @ApiParam({ name: "userId", type: Number, required: true })
+  async updateMemberRole(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @Param("userId", ParseIntPipe) userId: number,
+    @Body() body: UpdateOrganizationMemberInputDto,
+    @GetUser() user: UserWithProfile
+  ): Promise<OrganizationMemberResponseDto> {
+    const member = await this.organizationMembersService.updateMemberRole(user, organizationId, userId, body);
+    return {
+      status: SUCCESS_STATUS,
+      data: plainToClass(OrganizationMemberDto, member, { strategy: "excludeAll" }),
+    };
+  }
+
+  @Delete("/:organizationId/members/:userId")
+  @ApiOperation({
+    summary: "Remove a member from the organization",
+    description:
+      "Removes the membership (the user account itself is not deleted). The last OWNER cannot be removed. Only instance admins or admins of the organization can remove members.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  @ApiParam({ name: "userId", type: Number, required: true })
+  async removeMember(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @Param("userId", ParseIntPipe) userId: number,
+    @GetUser() user: UserWithProfile
+  ): Promise<OrganizationMemberResponseDto> {
+    const member = await this.organizationMembersService.removeMember(user, organizationId, userId);
+    return {
+      status: SUCCESS_STATUS,
+      data: plainToClass(OrganizationMemberDto, member, { strategy: "excludeAll" }),
     };
   }
 }

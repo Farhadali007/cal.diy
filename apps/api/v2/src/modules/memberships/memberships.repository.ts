@@ -1,8 +1,7 @@
+import { MembershipRole } from "@calcom/platform-libraries";
+import { Injectable } from "@nestjs/common";
 import { PrismaReadService } from "@/modules/prisma/prisma-read.service";
 import { PrismaWriteService } from "@/modules/prisma/prisma-write.service";
-import { Injectable } from "@nestjs/common";
-
-import { MembershipRole } from "@calcom/platform-libraries";
 
 @Injectable()
 export class MembershipsRepository {
@@ -126,6 +125,123 @@ export class MembershipsRepository {
     });
 
     return membership;
+  }
+
+  async findMembershipsByOrgId(organizationId: number) {
+    return this.dbRead.prisma.membership.findMany({
+      where: {
+        teamId: organizationId,
+      },
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        accepted: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            username: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+  }
+
+  async findMembershipWithUser(organizationId: number, userId: number) {
+    return this.dbRead.prisma.membership.findUnique({
+      where: {
+        userId_teamId: {
+          userId,
+          teamId: organizationId,
+        },
+      },
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        accepted: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            username: true,
+          },
+        },
+      },
+    });
+  }
+
+  async updateMembershipRole(organizationId: number, userId: number, role: MembershipRole) {
+    return this.dbWrite.prisma.membership.update({
+      where: {
+        userId_teamId: {
+          userId,
+          teamId: organizationId,
+        },
+      },
+      data: {
+        role,
+      },
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        accepted: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            username: true,
+          },
+        },
+      },
+    });
+  }
+
+  async deleteMembership(organizationId: number, userId: number) {
+    return this.dbWrite.prisma.membership.delete({
+      where: {
+        userId_teamId: {
+          userId,
+          teamId: organizationId,
+        },
+      },
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        accepted: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            username: true,
+          },
+        },
+      },
+    });
+  }
+
+  async countOwnersByOrgId(organizationId: number) {
+    return this.dbRead.prisma.membership.count({
+      where: {
+        teamId: organizationId,
+        accepted: true,
+        role: "OWNER",
+      },
+    });
   }
 
   async getUserAdminOrOwnerTeamMembership(userId: number, teamId: number) {

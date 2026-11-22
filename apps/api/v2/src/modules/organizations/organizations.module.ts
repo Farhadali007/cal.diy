@@ -14,6 +14,7 @@ import { UserOOORepository } from "@/modules/ooo/repositories/ooo.repository";
 import { UserOOOService } from "@/modules/ooo/services/ooo.service";
 import { OrganizationsController } from "@/modules/organizations/controllers/organizations.controller";
 import { OrganizationsRepository } from "@/modules/organizations/index/organizations.repository";
+import { OrganizationMembersService } from "@/modules/organizations/services/organization-members.service";
 import { OrganizationOwnershipService } from "@/modules/organizations/services/organization-ownership.service";
 import { OrganizationsService } from "@/modules/organizations/services/organizations.service";
 import { PrismaModule } from "@/modules/prisma/prisma.module";
@@ -46,6 +47,7 @@ import { SchedulesService_2024_06_11 } from "@/platform/schedules/schedules_2024
     OrganizationsRepository,
     OrganizationsService,
     OrganizationOwnershipService,
+    OrganizationMembersService,
     EmailService,
     UserOOOService,
     UserOOORepository,
@@ -64,6 +66,11 @@ import { SchedulesService_2024_06_11 } from "@/platform/schedules/schedules_2024
     OAuthClientRepository,
     Logger,
   ],
-  exports: [OrganizationsRepository, OrganizationsService, OrganizationOwnershipService],
+  exports: [
+    OrganizationsRepository,
+    OrganizationsService,
+    OrganizationOwnershipService,
+    OrganizationMembersService,
+  ],
 })
 export class OrganizationsModule {}
