@@ -1,5 +1,7 @@
 import authedProcedure from "../../../procedures/authedProcedure";
 import { router } from "../../../trpc";
+import { ZRemoveMemberInputSchema } from "./removeMember.schema";
+import { ZUpdateMemberRoleInputSchema } from "./updateMemberRole.schema";
 import { ZUpdateOrgInputSchema } from "./updateOrg.schema";
 import { ZUpdateSettingsInputSchema } from "./updateSettings.schema";
 
@@ -22,4 +24,18 @@ export const organizationsRouter = router({
       const handler = (await import("./updateSettings.handler")).updateSettingsHandler;
       return handler({ ctx, input });
     }),
+  listMembers: authedProcedure.query(async ({ ctx }) => {
+    const handler = (await import("./listMembers.handler")).listMembersHandler;
+    return handler({ ctx });
+  }),
+  updateMemberRole: authedProcedure
+    .input(ZUpdateMemberRoleInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const handler = (await import("./updateMemberRole.handler")).updateMemberRoleHandler;
+      return handler({ ctx, input });
+    }),
+  removeMember: authedProcedure.input(ZRemoveMemberInputSchema).mutation(async ({ ctx, input }) => {
+    const handler = (await import("./removeMember.handler")).removeMemberHandler;
+    return handler({ ctx, input });
+  }),
 });
