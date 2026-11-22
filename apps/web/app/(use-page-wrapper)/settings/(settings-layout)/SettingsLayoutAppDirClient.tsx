@@ -263,7 +263,11 @@ const useTabs = ({ permissions }: { permissions?: SettingsPermissions }) => {
 
     // check if name is in adminRequiredKeys
     return processedTabs.filter((tab) => {
-      if (organizationRequiredKeys.includes(tab.name)) return !!orgBranding;
+      // The org tab's children are all admin-only pages, so a plain member
+      // would bounce to /event-types on every click — hide the tab for
+      // non-admins instead of showing a dead end.
+      if (organizationRequiredKeys.includes(tab.name))
+        return !!orgBranding && !!permissions?.canUpdateOrganization;
       if (tab.name === "other_teams" && !permissions?.canUpdateOrganization) return false;
 
       if (isAdmin) return true;
