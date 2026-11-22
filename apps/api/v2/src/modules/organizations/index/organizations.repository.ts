@@ -1,4 +1,4 @@
-import { Prisma } from "@calcom/prisma/client";
+import { MembershipRole, Prisma } from "@calcom/prisma/client";
 import { Injectable } from "@nestjs/common";
 import { PrismaReadService } from "@/modules/prisma/prisma-read.service";
 import { PrismaWriteService } from "@/modules/prisma/prisma-write.service";
@@ -30,7 +30,6 @@ export class OrganizationsRepository {
       },
     });
   }
-
 
   async findTeamIdAndSlugFromClientId(clientId: string) {
     return this.dbRead.prisma.team.findFirstOrThrow({
@@ -138,4 +137,53 @@ export class OrganizationsRepository {
     });
   }
 
+  /**
+   * Creates an organization atomically: the Team row (isOrganization=true,
+   * parentId=null), its OrganizationSettings row, and an OWNER membership
+   * for the provisioning user. Mirrors the shape used by
+   * OrganizationRepositoryFixture.create in the e2e fixtures.
+   *
+   * isAdminAPIEnabled is true: VOICERO manages the org through this API
+   * (provisioning, staff, event types), so the admin API must be enabled
+   * from creation. orgAutoAcceptEmail defaults to "" (no auto-accept
+   * domain); it only feeds username derivation, never access decisions.
+   *
+   * The data arg is TeamUncheckedCreateInput (not TeamCreateInput): the
+   * create sets the scalar parentId=null, which the checked input type
+   * does not accept (it only carries the `parent` relation).
+   */
+  async create(args: {
+    data: Prisma.TeamUncheckedCreateInput;
+    ownerUserId: number;
+    orgAutoAcceptEmail: string;
+  }) {
+    return this.dbWrite.prisma.$transaction(async (prisma) => {
+      const team = await prisma.team.create({
+        data: {
+          ...args.data,
+          isOrganization: true,
+          parentId: null,
+        },
+      });
+
+      await prisma.organizationSettings.create({
+        data: {
+          organizationId: team.id,
+          isAdminAPIEnabled: true,
+          orgAutoAcceptEmail: args.orgAutoAcceptEmail,
+        },
+      });
+
+      await prisma.membership.create({
+        data: {
+          teamId: team.id,
+          userId: args.ownerUserId,
+          role: MembershipRole.OWNER,
+          accepted: true,
+        },
+      });
+
+      return team;
+    });
+  }
 }
