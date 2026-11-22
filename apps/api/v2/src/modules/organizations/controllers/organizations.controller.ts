@@ -1,5 +1,22 @@
 import { SUCCESS_STATUS } from "@calcom/platform-constants";
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from "@nestjs/common";
+import {
+  CreateOAuthClientInput,
+  CreateOAuthClientOutput,
+  PlatformOAuthClientDto,
+} from "@calcom/platform-types";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiHeader, ApiOperation, ApiParam, ApiTags as DocsTags } from "@nestjs/swagger";
 import { plainToClass } from "class-transformer";
 import {
@@ -23,7 +40,10 @@ import { API_VERSIONS_VALUES } from "@/lib/api-versions";
 import { API_KEY_OR_ACCESS_TOKEN_HEADER } from "@/lib/docs/headers";
 import { GetUser } from "@/modules/auth/decorators/get-user/get-user.decorator";
 import { ApiAuthGuard } from "@/modules/auth/guards/api-auth/api-auth.guard";
+import { CreateOAuthClientResponseDto } from "@/modules/oauth-clients/controllers/oauth-clients/responses/CreateOAuthClientResponse.dto";
+import { GetOAuthClientsResponseDto } from "@/modules/oauth-clients/controllers/oauth-clients/responses/GetOAuthClientsResponse.dto";
 import { OrganizationMembersService } from "@/modules/organizations/services/organization-members.service";
+import { OrganizationOAuthClientsService } from "@/modules/organizations/services/organization-oauth-clients.service";
 import { OrganizationOwnershipService } from "@/modules/organizations/services/organization-ownership.service";
 import { OrganizationsService } from "@/modules/organizations/services/organizations.service";
 import { UserWithProfile } from "@/modules/users/users.repository";
@@ -39,7 +59,8 @@ export class OrganizationsController {
   constructor(
     private readonly organizationsService: OrganizationsService,
     private readonly organizationOwnershipService: OrganizationOwnershipService,
-    private readonly organizationMembersService: OrganizationMembersService
+    private readonly organizationMembersService: OrganizationMembersService,
+    private readonly organizationOAuthClientsService: OrganizationOAuthClientsService
   ) {}
 
   @Post("/")
@@ -205,6 +226,48 @@ export class OrganizationsController {
     return {
       status: SUCCESS_STATUS,
       data: plainToClass(OrganizationMemberDto, member, { strategy: "excludeAll" }),
+    };
+  }
+
+  @Post("/:organizationId/oauth-clients")
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: "Create an OAuth client for the organization",
+    description:
+      "Creates an OAuth client scoped to this organization (task 2.5 — automatic provisioning). Unlike POST /v2/oauth-clients, which scopes to the caller's main org, this endpoint takes the target org from the path so a provisioning admin can create a client for a freshly created org. Only instance admins or admins of the organization can create clients. The client secret is returned ONCE — store it encrypted.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  async createOAuthClientForOrganization(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @Body() body: CreateOAuthClientInput,
+    @GetUser() user: UserWithProfile
+  ): Promise<CreateOAuthClientResponseDto> {
+    const credentials = await this.organizationOAuthClientsService.createOAuthClient(
+      user,
+      organizationId,
+      body
+    );
+    return {
+      status: SUCCESS_STATUS,
+      data: plainToClass(CreateOAuthClientOutput, credentials, { strategy: "excludeAll" }),
+    };
+  }
+
+  @Get("/:organizationId/oauth-clients")
+  @ApiOperation({
+    summary: "List the organization's OAuth clients",
+    description:
+      "Lists the OAuth clients scoped to this organization (task 2.5 — provisioning status checks). Only instance admins or admins of the organization can list clients. Client secrets are never returned here.",
+  })
+  @ApiParam({ name: "organizationId", type: Number, required: true })
+  async listOAuthClientsForOrganization(
+    @Param("organizationId", ParseIntPipe) organizationId: number,
+    @GetUser() user: UserWithProfile
+  ): Promise<GetOAuthClientsResponseDto> {
+    const clients = await this.organizationOAuthClientsService.listOAuthClients(user, organizationId);
+    return {
+      status: SUCCESS_STATUS,
+      data: plainToClass(PlatformOAuthClientDto, clients, { strategy: "excludeAll" }),
     };
   }
 }
