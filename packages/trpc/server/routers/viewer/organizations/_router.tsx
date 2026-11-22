@@ -1,6 +1,8 @@
 import authedProcedure from "../../../procedures/authedProcedure";
 import { router } from "../../../trpc";
+import { ZLinkManagedOrganizationInputSchema } from "./linkManagedOrganization.schema";
 import { ZRemoveMemberInputSchema } from "./removeMember.schema";
+import { ZUnlinkManagedOrganizationInputSchema } from "./unlinkManagedOrganization.schema";
 import { ZUpdateMemberRoleInputSchema } from "./updateMemberRole.schema";
 import { ZUpdateOrgInputSchema } from "./updateOrg.schema";
 import { ZUpdateSettingsInputSchema } from "./updateSettings.schema";
@@ -38,4 +40,23 @@ export const organizationsRouter = router({
     const handler = (await import("./removeMember.handler")).removeMemberHandler;
     return handler({ ctx, input });
   }),
+  listManagedOrganizations: authedProcedure.query(async ({ ctx }) => {
+    const handler = (await import("./listManagedOrganizations.handler"))
+      .listManagedOrganizationsHandler;
+    return handler({ ctx });
+  }),
+  linkManagedOrganization: authedProcedure
+    .input(ZLinkManagedOrganizationInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const handler = (await import("./linkManagedOrganization.handler"))
+        .linkManagedOrganizationHandler;
+      return handler({ ctx, input });
+    }),
+  unlinkManagedOrganization: authedProcedure
+    .input(ZUnlinkManagedOrganizationInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const handler = (await import("./unlinkManagedOrganization.handler"))
+        .unlinkManagedOrganizationHandler;
+      return handler({ ctx, input });
+    }),
 });
