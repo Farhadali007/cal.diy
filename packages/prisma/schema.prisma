@@ -724,15 +724,25 @@ model OrganizationSettings {
   disableAutofillOnBookingPage        Boolean    @default(false)
   orgAutoJoinOnSignup                 Boolean    @default(true)
 
-  disableAttendeeConfirmationEmail      Boolean @default(false)
-  disableAttendeeCancellationEmail      Boolean @default(false)
-  disableAttendeeRescheduledEmail       Boolean @default(false)
-  disableAttendeeRequestEmail           Boolean @default(false)
-  disableAttendeeReassignedEmail        Boolean @default(false)
-  disableAttendeeAwaitingPaymentEmail   Boolean @default(false)
-  disableAttendeeRescheduleRequestEmail Boolean @default(false)
-  disableAttendeeLocationChangeEmail    Boolean @default(false)
-  disableAttendeeNewEventEmail          Boolean @default(false)
+  disableAttendeeConfirmationEmail      Boolean   @default(false)
+  disableAttendeeCancellationEmail      Boolean   @default(false)
+  disableAttendeeRescheduledEmail       Boolean   @default(false)
+  disableAttendeeRequestEmail           Boolean   @default(false)
+  disableAttendeeReassignedEmail        Boolean   @default(false)
+  disableAttendeeAwaitingPaymentEmail   Boolean   @default(false)
+  disableAttendeeRescheduleRequestEmail Boolean   @default(false)
+  disableAttendeeLocationChangeEmail    Boolean   @default(false)
+  disableAttendeeNewEventEmail          Boolean   @default(false)
+  // VOICERO Calendar Engine (task 2.7): org-level suspension. While
+  // suspended, the org's OAuth client credentials are rejected at auth
+  // (ApiAuthStrategy), so all API access for the business stops. The
+  // platform admin API key is never blocked by suspension — it is the
+  // recovery path. suspendedById is the instance-admin or manager-org
+  // admin user who suspended the org; NULL when never suspended.
+  suspended                             Boolean   @default(false)
+  suspendedAt                           DateTime?
+  suspendedReason                       String?
+  suspendedById                         Int?
 }
 
 enum MembershipRole {
