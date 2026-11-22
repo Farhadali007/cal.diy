@@ -43,7 +43,7 @@ import { plainToClass } from "class-transformer";
 import { Request } from "express";
 import { z } from "zod";
 
-import { APPS_READ } from "@calcom/platform-constants";
+import { APPS_READ, APPS_WRITE } from "@calcom/platform-constants";
 import {
   SUCCESS_STATUS,
   CALENDARS,
@@ -89,8 +89,9 @@ export class CalendarsController {
   ) {}
 
   @Post("/ics-feed/save")
-  @UseGuards(ApiAuthGuard)
+  @UseGuards(ApiAuthGuard, PermissionsGuard)
   @ApiHeader(API_KEY_OR_ACCESS_TOKEN_HEADER)
+  @Permissions([APPS_WRITE])
   @ApiOperation({ summary: "Save an ICS feed" })
   async createIcsFeed(
     @GetUser("id") userId: number,
@@ -101,15 +102,17 @@ export class CalendarsController {
   }
 
   @Get("/ics-feed/check")
-  @UseGuards(ApiAuthGuard)
+  @UseGuards(ApiAuthGuard, PermissionsGuard)
   @ApiHeader(API_KEY_OR_ACCESS_TOKEN_HEADER)
+  @Permissions([APPS_READ])
   @ApiOperation({ summary: "Check an ICS feed" })
   async checkIcsFeed(@GetUser("id") userId: number): Promise<ApiResponse> {
     return await this.icsFeedService.check(userId);
   }
 
-  @UseGuards(ApiAuthGuard)
+  @UseGuards(ApiAuthGuard, PermissionsGuard)
   @ApiHeader(API_KEY_OR_ACCESS_TOKEN_HEADER)
+  @Permissions([APPS_READ])
   @Get("/busy-times")
   @ApiOperation({
     summary: "Get busy times",
@@ -143,8 +146,9 @@ export class CalendarsController {
   }
 
   @Get("/")
-  @UseGuards(ApiAuthGuard)
+  @UseGuards(ApiAuthGuard, PermissionsGuard)
   @ApiHeader(API_KEY_OR_ACCESS_TOKEN_HEADER)
+  @Permissions([APPS_READ])
   @ApiOperation({ summary: "Get all calendars" })
   async getCalendars(@GetUser("id") userId: number): Promise<ConnectedCalendarsOutput> {
     const calendars = await this.calendarsService.getCalendars(userId);
@@ -244,8 +248,9 @@ export class CalendarsController {
     type: String,
     name: "calendar",
   })
-  @UseGuards(ApiAuthGuard)
+  @UseGuards(ApiAuthGuard, PermissionsGuard)
   @ApiHeader(API_KEY_OR_ACCESS_TOKEN_HEADER)
+  @Permissions([APPS_WRITE])
   @Post("/:calendar/credentials")
   @ApiOperation({ summary: "Save Apple calendar credentials" })
   async syncCredentials(
@@ -298,8 +303,9 @@ export class CalendarsController {
     type: String,
     name: "calendar",
   })
-  @UseGuards(ApiAuthGuard)
+  @UseGuards(ApiAuthGuard, PermissionsGuard)
   @ApiHeader(API_KEY_OR_ACCESS_TOKEN_HEADER)
+  @Permissions([APPS_WRITE])
   @Post("/:calendar/disconnect")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Disconnect a calendar" })

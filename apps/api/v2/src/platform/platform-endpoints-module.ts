@@ -34,6 +34,8 @@ import { Module } from "@nestjs/common";
 export class PlatformEndpointsModule implements NestModule {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   configure(_consumer: MiddlewareConsumer) {
-    // TODO: apply ratelimits
+    // Rate limiting is enforced globally by CustomThrottlerGuard (APP_GUARD
+    // in app.module.ts, Redis-backed) — no per-module middleware needed.
+    // (The old TODO here was stale; verified in task 2.6.)
   }
 }
