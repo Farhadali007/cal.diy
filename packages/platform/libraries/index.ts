@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getBookingForReschedule } from "@calcom/features/bookings/lib/get-booking";
 import getAllUserBookings from "@calcom/features/bookings/lib/getAllUserBookings";
 import { getBookingFieldsWithSystemFields } from "@calcom/features/bookings/lib/getBookingFields";
@@ -6,7 +7,10 @@ import handleCancelBooking from "@calcom/features/bookings/lib/handleCancelBooki
 import handleMarkNoShow from "@calcom/features/handleMarkNoShow";
 import { getTranslation } from "@calcom/i18n/server";
 import { symmetricDecrypt, symmetricEncrypt } from "@calcom/lib/crypto";
+import { slugify } from "@calcom/lib/slugify";
+import prisma from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
+import { CreationSource, MembershipRole } from "@calcom/prisma/enums";
 import { credentialForCalendarServiceSelect } from "@calcom/prisma/selects/credential";
 import { paymentDataSelect } from "@calcom/prisma/selects/payment";
 
@@ -90,12 +94,12 @@ export { paymentDataSelect };
 export { confirmHandler as confirmBookingHandler } from "@calcom/trpc/server/routers/viewer/bookings/confirm.handler";
 export { getBookingFieldsWithSystemFields };
 
-export { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 export { sendLocationChangeEmailsAndSMS } from "@calcom/emails/email-manager";
+export { checkAdminOrOwner } from "@calcom/features/auth/lib/checkAdminOrOwner";
 export { verifyCodeUnAuthenticated } from "@calcom/features/auth/lib/verifyCodeUnAuthenticated";
 export { sendEmailVerificationByCode } from "@calcom/features/auth/lib/verifyEmail";
-export { getCalendarLinks } from "@calcom/features/bookings/lib/getCalendarLinks";
 export { BookingReferenceRepository } from "@calcom/features/bookingReference/repositories/BookingReferenceRepository";
+export { getCalendarLinks } from "@calcom/features/bookings/lib/getCalendarLinks";
 export { BookingAccessService } from "@calcom/features/bookings/services/BookingAccessService";
 export { CredentialRepository } from "@calcom/features/credentials/repositories/CredentialRepository";
 export type { OrgMembershipLookup } from "@calcom/features/di/modules/OrgMembershipLookup";
@@ -180,8 +184,17 @@ export async function verifyCodeAuthenticated(_args: {
   return false;
 }
 
-// createNewUsersConnectToOrgIfExists removed (EE feature) — stub for API v2
-export async function createNewUsersConnectToOrgIfExists(_args: {
+// VOICERO: community-edition implementation of the EE-removed
+// createNewUsersConnectToOrgIfExists, scoped to the platform-managed-user
+// path used by API v2 (OAuthClientUsersService.createOAuthClientUser).
+// Creates (or connects) one user per invitation, adds an accepted org
+// membership, and creates the org profile. Invitation emails, verification
+// flows, sub-team invites, and auto-accept domain rules are out of scope:
+// the API v2 caller is an authenticated OAuth client acting for the org and
+// passes autoAccept for every invitation, so memberships are accepted
+// unconditionally here. Retry-safe: re-running for an existing email
+// connects that user instead of failing.
+export async function createNewUsersConnectToOrgIfExists(args: {
   invitations: { usernameOrEmail: string; role: string }[];
   creationSource?: string;
   teamId: number;
@@ -195,7 +208,117 @@ export async function createNewUsersConnectToOrgIfExists(_args: {
   timeZone?: string;
   language?: string;
 }): Promise<{ id: number; email: string; username: string }[]> {
-  throw new Error("Organization user creation is not available in community edition");
+  function deriveUsernameFromEmail(email: string): string {
+    // Mirrors the username derivation in OAuthClientUsersService.updateOAuthClientUser.
+    const [emailUser, emailDomain = ""] = email.split("@");
+    const [domainName, TLD] = emailDomain.split(".");
+    if (TLD) {
+      return slugify(`${emailUser}-${domainName}-${TLD}`);
+    }
+    return slugify(`${emailUser}-${domainName}`);
+  }
+
+  async function ensureAvailableUsername(base: string, organizationId: number | null): Promise<string> {
+    // User @@unique([username, organizationId]) and Profile @@unique([username, organizationId]).
+    let candidate = base;
+    for (let attempt = 2; attempt <= 100; attempt++) {
+      const userConflict = await prisma.user.findFirst({
+        where: { username: candidate, organizationId },
+        select: { id: true },
+      });
+      let profileConflict: { id: number } | null = null;
+      if (organizationId !== null) {
+        profileConflict = await prisma.profile.findFirst({
+          where: { username: candidate, organizationId },
+          select: { id: true },
+        });
+      }
+      if (!userConflict && !profileConflict) return candidate;
+      candidate = `${base}-${attempt}`;
+    }
+    throw new Error(`Could not find an available username for base "${base}"`);
+  }
+
+  const created: { id: number; email: string; username: string }[] = [];
+  for (const invitation of args.invitations) {
+    const email = invitation.usernameOrEmail;
+    const roleByName: Record<string, MembershipRole> = {
+      ADMIN: MembershipRole.ADMIN,
+      OWNER: MembershipRole.OWNER,
+    };
+    const role = roleByName[invitation.role] ?? MembershipRole.MEMBER;
+    const creationSourceByName: Record<string, CreationSource> = {
+      [CreationSource.API_V1]: CreationSource.API_V1,
+      [CreationSource.API_V2]: CreationSource.API_V2,
+      [CreationSource.WEBAPP]: CreationSource.WEBAPP,
+    };
+    const creationSource = args.creationSource ? creationSourceByName[args.creationSource] : undefined;
+    let organizationId: number | null = null;
+    if (args.isOrg) {
+      organizationId = args.teamId;
+    }
+
+    const existing = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, username: true },
+    });
+
+    let username: string;
+    let userId: number;
+    if (existing) {
+      // Connect the existing user; only assign a username when they have none.
+      userId = existing.id;
+      username =
+        existing.username ?? (await ensureAvailableUsername(deriveUsernameFromEmail(email), organizationId));
+      if (!existing.username) {
+        await prisma.user.update({ where: { id: existing.id }, data: { username } });
+      }
+    } else {
+      username = await ensureAvailableUsername(deriveUsernameFromEmail(email), organizationId);
+      const user = await prisma.user.create({
+        data: {
+          email,
+          username,
+          // The API v2 caller overwrites the name immediately after creation.
+          name: email.split("@")[0],
+          timeZone: args.timeZone ?? "Europe/London",
+          weekStart: args.weekStart ?? "Sunday",
+          timeFormat: args.timeFormat ?? 12,
+          locale: args.language,
+          organizationId: organizationId ?? undefined,
+          isPlatformManaged: args.isPlatformManaged ?? false,
+          creationSource,
+          // Platform-managed users authenticate via OAuth tokens, never via
+          // email/password, so no email verification round-trip applies.
+          emailVerified: new Date(),
+        },
+        select: { id: true },
+      });
+      userId = user.id;
+    }
+
+    await prisma.membership.upsert({
+      where: { userId_teamId: { userId, teamId: args.teamId } },
+      update: { accepted: true, role },
+      create: { userId, teamId: args.teamId, role, accepted: true },
+    });
+
+    if (args.isOrg) {
+      await prisma.profile.upsert({
+        where: { userId_organizationId: { userId, organizationId: args.teamId } },
+        update: { username },
+        create: {
+          uid: randomUUID(),
+          userId,
+          organizationId: args.teamId,
+          username,
+        },
+      });
+    }
+
+    created.push({ id: userId, email, username });
+  }
+  return created;
 }
 
 // sendVerificationCode removed (EE feature) — stub for API v2
