@@ -6,6 +6,7 @@ import dotEnv from "dotenv";
 import path from "node:path"
 
 import { appStoreMetadata } from "@calcom/app-store/appStoreMetaData";
+import { isAppDisabled } from "@calcom/app-store/_utils/disabledApps";
 import { shouldEnableApp } from "@calcom/app-store/_utils/validateAppKeys";
 import prisma from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
@@ -51,7 +52,8 @@ async function createApp(
 
     // Only enable apps if they have valid keys (or don't require keys)
     const keysToValidate = (keys ?? foundApp?.keys) as Prisma.JsonValue | undefined;
-    const enabled = shouldEnableApp(dirName, keysToValidate);
+    // VOICERO (task 4.7): policy-disabled apps seed as enabled=false.
+    const enabled = shouldEnableApp(dirName, keysToValidate) && !isAppDisabled(slug);
     const data = {
       slug,
       dirName,

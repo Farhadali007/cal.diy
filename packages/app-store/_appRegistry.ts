@@ -1,3 +1,4 @@
+import { excludeDisabledApps, isAppDisabled } from "@calcom/app-store/_utils/disabledApps";
 import { appStoreMetadata } from "@calcom/app-store/appStoreMetaData";
 import { getAllDelegationCredentialsForUser } from "@calcom/app-store/delegationCredential";
 import { getAppFromSlug } from "@calcom/app-store/utils";
@@ -18,6 +19,11 @@ export type TDependencyData = {
  */
 export async function getAppWithMetadata(app: { dirName: string } | { slug: string }) {
   let appMetadata: App | null;
+
+  // VOICERO (task 4.7): policy-disabled apps read as absent everywhere
+  // metadata is consumed — catalog listings, the /apps/[slug] page, and
+  // the syncAppMeta cron all skip them via this null.
+  if (isAppDisabled("dirName" in app ? app.dirName : app.slug)) return null;
 
   if ("dirName" in app) {
     appMetadata = appStoreMetadata[app.dirName as keyof typeof appStoreMetadata] as App;
@@ -44,7 +50,8 @@ export async function getAppRegistry() {
   });
   const apps = [] as App[];
   const installCountPerApp = await getInstallCountPerApp();
-  for await (const dbapp of dbApps) {
+  // VOICERO (task 4.7): policy-disabled apps are never listed.
+  for await (const dbapp of excludeDisabledApps(dbApps)) {
     const app = await getAppWithMetadata(dbapp);
     if (!app) continue;
     // Skip if app isn't installed
@@ -102,7 +109,8 @@ export async function getAppRegistryWithCredentials(userId: number, userAdminTea
     isDefault?: boolean;
   })[];
   const installCountPerApp = await getInstallCountPerApp();
-  for await (const dbapp of dbApps) {
+  // VOICERO (task 4.7): policy-disabled apps are never listed.
+  for await (const dbapp of excludeDisabledApps(dbApps)) {
     const delegationCredentialsForApp = delegationCredentials.filter(
       (credential) => credential.appId === dbapp.slug
     );

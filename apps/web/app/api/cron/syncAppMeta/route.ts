@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { getAppWithMetadata } from "@calcom/app-store/_appRegistry";
+import { isAppDisabled } from "@calcom/app-store/_utils/disabledApps";
 import { shouldEnableApp } from "@calcom/app-store/_utils/validateAppKeys";
 import logger from "@calcom/lib/logger";
 import { prisma } from "@calcom/prisma";
@@ -29,6 +30,21 @@ async function postHandler(request: NextRequest) {
   const dbApps = await prisma.app.findMany();
 
   for await (const dbApp of dbApps) {
+    // VOICERO (task 4.7): policy-disabled apps stay enabled=false in the
+    // DB. Without this the cron below would re-enable them whenever their
+    // keys validate (shouldEnableApp knows nothing about the policy).
+    if (isAppDisabled(dbApp.slug)) {
+      if (dbApp.enabled) {
+        log.warn(`⛔ Disabling app ${dbApp.slug} - disabled by VOICERO app-store policy.`);
+        if (!isDryRun) {
+          await prisma.app.update({
+            where: { slug: dbApp.slug },
+            data: { enabled: false },
+          });
+        }
+      }
+      continue;
+    }
     const app = await getAppWithMetadata(dbApp);
     const updates: Prisma.AppUpdateManyMutationInput = {};
 

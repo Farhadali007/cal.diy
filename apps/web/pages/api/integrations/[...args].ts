@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { Session } from "next-auth";
 
+import { isAppDisabled } from "@calcom/app-store/_utils/disabledApps";
 import { throwIfNotHaveAdminAccessToTeam } from "@calcom/app-store/_utils/throwIfNotHaveAdminAccessToTeam";
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
 import { deriveAppDictKeyFromType } from "@calcom/lib/deriveAppDictKeyFromType";
@@ -64,6 +65,11 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     /* Absolute path didn't work */
     const handlerMap = (await import("@calcom/app-store/apps.server.generated")).apiHandlers;
     const handlerKey = deriveAppDictKeyFromType(appName, handlerMap);
+    // VOICERO (task 4.7): policy-disabled apps cannot be installed.
+    // Callbacks stay open so an in-flight install can complete.
+    if (apiEndpoint === "add" && (isAppDisabled(handlerKey) || isAppDisabled(appName))) {
+      throw new HttpError({ statusCode: 403, message: `The ${handlerKey} integration is disabled` });
+    }
     const handlers = await handlerMap[handlerKey as keyof typeof handlerMap];
     if (!handlers) throw new HttpError({ statusCode: 404, message: `No handlers found for ${handlerKey}` });
     const handler = handlers[apiEndpoint as keyof typeof handlers] as AppHandler;

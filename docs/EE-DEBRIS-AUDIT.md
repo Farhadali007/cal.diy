@@ -9,7 +9,27 @@ Method: `rg`/`grep` over `apps/` + `packages/` (excluding `node_modules`),
 Prisma schema reads, provider/route registration checks, and caller
 counts. Every verdict below cites file evidence.
 
-## 1. SAML / SSO — STRIP
+## Revision 2026-11-23 (task 4.7) — disable, don't strip
+
+Founder decision 2026-11-23 (Final 6% order): prefer DISABLING unused
+integrations over destructively removing working upstream code. The
+1.11 strip plan below is revisited under that principle:
+
+- Surfaces with a runtime disable point are DISABLED by configuration
+  (the app-store disable list — see §8). No app code is deleted;
+  re-enabling is one env line.
+- Surfaces with zero runtime surface (dead code, unread env vars,
+  unreachable branches) have their strip DEFERRED indefinitely: there
+  is nothing to disable, and deleting working code buys nothing until
+  a concrete reason appears (a CVE in an unused dependency, build
+  weight, a confusing UI). The original strip plan stays below as the
+  record of what to remove if that reason ever appears.
+- Nothing in this revision authorizes a migration, a dependency
+  removal, or a production change. Section headings keep the original
+  verdict in parentheses so the 1.11 evidence stays readable; the
+  summary table gains a revised column.
+
+## 1. SAML / SSO — DEFER STRIP (inert; was STRIP)
 
 Dead. No SAML provider is registered and no SAML code path is reachable.
 
@@ -40,7 +60,7 @@ dropped casually) — do it in the schema strip batch with the DSync
 models, or leave the single enum value as harmless residue and record
 that choice.
 
-## 2. DSync / SCIM — STRIP (schema)
+## 2. DSync / SCIM — DEFER STRIP (inert schema; was STRIP)
 
 Dead. Schema + generated artifacts only; zero hand-written code.
 
@@ -58,7 +78,7 @@ zod schemas (`yarn prisma generate` + the zod generator), run the
 affected type-checks. Precondition: confirm no seed or later migration
 references the tables.
 
-## 3. Cal.ai / AI voice agents — QUARANTINE (do not strip unilaterally)
+## 3. Cal.ai / AI voice agents — DISABLE (was QUARANTINE)
 
 **Correction to the Phase 0 audit:** this is NOT schema-only. The models
 back live, shipped app-store apps.
@@ -94,7 +114,7 @@ exactly one place — `packages/prisma/index.ts:86-89` — where it feeds
 **Verdict:** keep. It is a functional read-replica knob, not an
 analytics feature. Document it as such; do not present it as Insights.
 
-## 5. License key (`CALCOM_LICENSE_KEY`) — STRIP (fake UI)
+## 5. License key (`CALCOM_LICENSE_KEY`) — DEFER (fake UI; was STRIP)
 
 The license flow is a stub that always says valid.
 
@@ -114,7 +134,7 @@ field (migration). Precondition: verify the setup flow does not gate
 any step on the key being present — check the setup UI flow before
 stripping. VOICERO never ships a fake "valid" check.
 
-## 6. Stripe billing in API v2 — STRIP the billing half, KEEP the payment-app half
+## 6. Stripe billing in API v2 — DEFER STRIP of billing half, KEEP payment-app half (was STRIP/KEEP)
 
 The module is mixed: live payment-app code and dead commercial billing
 code share one service.
@@ -154,6 +174,62 @@ No `Workflow` model in the schema; tables dropped by migration
 feature. Nothing to strip. (VOICERO reuses its own notification system
 per the directive; do not rebuild Cal.com Workflows.)
 
+## 8. App-store disable list (task 4.7) — DISABLE, don't strip
+
+The 1.11 quarantine question (§3) is answered by configuration: the
+fork disables 98 of the 106 catalog apps through a policy list and
+keeps 8 enabled. No app code is deleted.
+
+**Mechanism** (`packages/app-store/_utils/disabledApps.ts` — no
+imports, so it cannot create a circular dependency): a default list of
+98 disabled slugs (plus dirName aliases where the dirName differs from
+the slug), matched by slug or dirName; `VOICERO_DISABLED_APPS`
+(comma-separated) adds extras; `VOICERO_ENABLE_DISABLED_APPS`
+re-enables (wins over both). Env is read lazily on every call.
+
+**Enforcement points** (all server-side; existing credentials and
+bookings keep working — disabling gates listing + new installs only):
+
+- `packages/app-store/_appRegistry.ts` — `getAppWithMetadata` returns
+  null for disabled apps, so `getAppRegistry` /
+  `getAppRegistryWithCredentials` never list them and `/apps/[slug]`
+  404s; the registry loops also pre-filter with
+  `excludeDisabledApps`.
+- `apps/web/pages/api/integrations/[...args].ts` — the `add` endpoint
+  returns 403 for disabled apps (callbacks stay open so an in-flight
+  install can complete).
+- `packages/trpc/server/routers/viewer/apps/toggle.handler.ts` — the
+  admin toggle refuses to re-enable a disabled app.
+- `scripts/seed-app-store.ts` + `apps/web/app/api/cron/syncAppMeta/
+  route.ts` — disabled apps seed/sync with `enabled=false`, so the
+  cron cannot re-enable them when their keys validate.
+
+**Kept enabled (8):** `google-calendar`, `office365-calendar`
+(calendars — task 3.4 precedence), `ics-feed` (ICS),
+`daily-video` (Cal Video — the founder keep-vs-replace decision is
+STILL OPEN, so it stays enabled), `google-meet`, `msteams`, `zoom`
+(conferencing), `stripe` (paid bookings — §6 KEEP half).
+
+**Disabled (98):** every other catalog app, including the four AI
+voice-agent apps (`retell-ai`, `fonio-ai`, `greetmate-ai`,
+`millis-ai` — VOICERO has its own voice widget), all CRM/analytics/
+automation/payment apps except Stripe, and all niche calendars
+(Apple, CalDAV, Exchange 2013/2016, Feishu, Lark, Zoho) and
+conferencing (Jitsi, Tandem, Huddle01, Webex, Whereby, …).
+Re-enable candidates if the product needs them later: `jitsi`
+(self-hosted conferencing fallback), `caldav-calendar`,
+`zapier` / `make` — one env line each, no code change.
+
+**Verified (4.7):** API v2 cannot install a disabled app — its only
+credential-creation callers are the Zoom, MS Teams, and Stripe
+services (`apps/api/v2/src/modules/conferencing/services/
+zoom-video.service.ts:111`, `office365-video.service.ts:118`,
+`modules/stripe/stripe.service.ts:126`), all kept apps. The event-type
+location picker only offers apps the user has credentials for
+(`packages/app-store/utils.ts` `getApps`), so a disabled app with no
+credentials never appears as a location option. Unit tests:
+`packages/app-store/_utils/disabledApps.test.ts`.
+
 ## Pointer for Phase 2 (not debris)
 
 `apps/api/v2/src/modules/organizations/` contains only
@@ -162,6 +238,9 @@ controller, no create route. Consistent with the Phase 0 finding that no
 org-creation API exists; task 2.1 builds it.
 
 ## Sequencing rules for the strip pass
+
+> NOTE (4.7): the strip pass is DEFERRED under the disable-first
+> principle. These rules apply if/when a strip is ever approved.
 
 1. Strip AFTER the 1.9 baseline proof, so the unmodified baseline is
    proven before anything is removed.
@@ -174,12 +253,13 @@ org-creation API exists; task 2.1 builds it.
 
 ## Summary table
 
-| # | Surface | Verdict | Size |
-|---|---|---|---|
-| 1 | SAML / SSO | STRIP (code + dep + env; enum member with schema batch) | ~10 files + dep |
-| 2 | DSync / SCIM | STRIP (schema + migration + regen) | 2 models + relations |
-| 3 | Cal.ai / AI voice agents | QUARANTINE — founder app-scope decision | 4 apps + 2 models |
-| 4 | Insights | KEEP — read-replica knob, document | 0 files |
-| 5 | License key | STRIP (fake UI: stub + prompt + field) | ~6 files + migration |
-| 6 | Stripe billing (API v2) | STRIP billing half; KEEP payment-app half | 1 service + app leftovers + env vars |
-| 7 | Workflows | CONFIRMED GONE | — |
+| # | Surface | Verdict (1.11) | Revised (4.7) | Size |
+|---|---|---|---|---|
+| 1 | SAML / SSO | STRIP (code + dep + env; enum member with schema batch) | DEFER STRIP — inert, zero runtime surface | ~10 files + dep |
+| 2 | DSync / SCIM | STRIP (schema + migration + regen) | DEFER STRIP — inert schema, zero code | 2 models + relations |
+| 3 | Cal.ai / AI voice agents | QUARANTINE — founder app-scope decision | DISABLE — 4 AI apps on the policy list (§8); models stay | 4 apps + 2 models |
+| 4 | Insights | KEEP — read-replica knob, document | KEEP (unchanged) | 0 files |
+| 5 | License key | STRIP (fake UI: stub + prompt + field) | DEFER — stub gates nothing; prompt removal needs the setup-flow check first | ~6 files + migration |
+| 6 | Stripe billing (API v2) | STRIP billing half; KEEP payment-app half | DEFER STRIP billing half (zero callers — re-verified 4.7); KEEP payment half | 1 service + app leftovers + env vars |
+| 7 | Workflows | CONFIRMED GONE | CONFIRMED GONE (unchanged) | — |
+| 8 | App-store scope (4.7) | — | DISABLE 98 apps by policy; KEEP 8 (§8) | 2 new files + 5 enforcement points |

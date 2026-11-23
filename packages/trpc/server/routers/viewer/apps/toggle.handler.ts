@@ -1,3 +1,4 @@
+import { isAppDisabled } from "@calcom/app-store/_utils/disabledApps";
 import { getLocalAppMetadata } from "@calcom/app-store/utils";
 import { sendDisabledAppEmail } from "@calcom/emails/integration-email-service";
 import { getTranslation } from "@calcom/i18n/server";
@@ -27,6 +28,12 @@ export const toggleHandler = async ({ input, ctx }: ToggleOptions) => {
 
   if (!appMetadata) {
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "App metadata could not be found" });
+  }
+
+  // VOICERO (task 4.7): the admin toggle cannot re-enable an app the
+  // deployment policy disables. Re-enable via VOICERO_ENABLE_DISABLED_APPS.
+  if (enabled && isAppDisabled(slug)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "This app is disabled by the VOICERO app-store policy." });
   }
 
   const app = await prisma.app.upsert({
