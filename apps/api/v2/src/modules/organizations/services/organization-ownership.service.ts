@@ -7,8 +7,8 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import type { MembershipsRepository } from "../../memberships/memberships.repository";
-import type { OrganizationsRepository } from "../index/organizations.repository";
+import { MembershipsRepository } from "../../memberships/memberships.repository";
+import { OrganizationsRepository } from "../index/organizations.repository";
 import type { UserWithProfile } from "@/modules/users/users.repository";
 
 /**

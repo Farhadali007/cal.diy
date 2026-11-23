@@ -6,8 +6,8 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import type { MembershipsRepository } from "../../memberships/memberships.repository";
-import type { OrganizationsRepository } from "@/modules/organizations/index/organizations.repository";
+import { MembershipsRepository } from "../../memberships/memberships.repository";
+import { OrganizationsRepository } from "@/modules/organizations/index/organizations.repository";
 import type {
   AddOrganizationMemberInputDto,
   UpdateOrganizationMemberInputDto,
