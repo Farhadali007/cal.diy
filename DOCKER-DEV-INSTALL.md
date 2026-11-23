@@ -12,6 +12,8 @@ after the CVE patches (tasks 1.3/1.4).
 | `docker-compose.dev.yml` | Guarded dev stack: Postgres + Redis + web + API v2 (+ profile-gated Prisma Studio) |
 | `.env.dev.example` | Env template (placeholders only — no real secrets) |
 | `pre-build-check.sh` | Guard-9 pre-build checklist, run on VPS A before every build |
+| `build-with-disk-guard.sh` | Disk-guarded build wrapper (task 4.6): refuses below 25G free on `/`, always prunes the voicero-caldev builder cache after the build |
+| `build-with-disk-guard.dry-run.sh` | Dry-run harness for the wrapper (mocked `docker`/`df`; no real build) |
 | `validate-dev-install.py` | Guard validator (run from the fork root; must sit beside the compose file) |
 | `DOCKER-DEV-INSTALL.md` | This procedure |
 
@@ -70,28 +72,22 @@ template (secrets via the approved flow only):
    no Ashemail/VOICERO deploy is in flight.
 3. `docker compose --env-file .env.dev -f docker-compose.dev.yml up -d database redis`
    (build-time DB must be reachable; see step 4).
-4. Capped builds on the compose network so `database` resolves
-   (guard 3; `docker compose build` has no memory flag, so build
-   explicitly):
+4. Build through the disk-guarded wrapper (task 4.6 — the documented
+   build path; do NOT run `docker build` / `docker buildx build` by
+   hand):
    ```sh
-   set -a; . ./.env.dev; set +a   # load DATABASE_URL, secrets for the build args below
-   NET=$(docker network ls --filter name=voicero-caldev --format '{{.Name}}' | head -1)
-   docker build --memory 8g --cpus 2.5 --network "$NET" \
-     --build-arg MAX_OLD_SPACE_SIZE=4096 \
-     --build-arg DATABASE_URL="$DATABASE_URL" \
-     --build-arg DATABASE_DIRECT_URL="$DATABASE_URL" \
-     --build-arg NEXT_PUBLIC_WEBAPP_URL=http://127.0.0.1:3300 \
-     --build-arg NEXT_PUBLIC_API_V2_URL=http://127.0.0.1:3301/api/v2 \
-     --build-arg NEXT_PUBLIC_DISABLE_SIGNUP=true \
-     --build-arg CALCOM_TELEMETRY_DISABLED=1 \
-     --build-arg NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
-     --build-arg CALENDSO_ENCRYPTION_KEY="$CALENDSO_ENCRYPTION_KEY" \
-     -t voicero-caldev-calcom:dev .
-   docker build --memory 8g --cpus 2.5 --network "$NET" \
-     --build-arg DATABASE_URL="$DATABASE_URL" \
-     --build-arg DATABASE_DIRECT_URL="$DATABASE_URL" \
-     -f apps/api/v2/Dockerfile -t voicero-caldev-calcom-api:dev .
+   ./build-with-disk-guard.sh all        # or: web | api
    ```
+   The wrapper runs the working buildx form (dedicated `voicero-caldev`
+   builder, `--network host`, `--load`; caps are enforced on the builder
+   container via `docker update` — the old `docker build --memory/--cpus`
+   flags do not exist in Docker 29.5.2; see WORKLOG 2026-11-23 session
+   3). Pre-flight refuses the build unless >= 25G is free on `/`
+   (pruning the builder cache once and re-checking first); the builder
+   cache is always pruned after the build via `docker buildx prune
+   --builder voicero-caldev --force` (success, failure, or interrupt).
+   The prune touches only that builder's cache — never other builders,
+   images, volumes, or containers.
    Never substitute a production `DATABASE_URL` here (guard R9).
    Never run these builds during a deploy or inside 03:30–04:30 /
    05:20–05:35 UTC (guard 4).
@@ -132,5 +128,14 @@ template (secrets via the approved flow only):
 - `pre-build-check.sh`: `bash -n` clean; function-level tests pass
   (both branches); full run in the sandbox correctly FAILS the RAM
   check (sandbox has ~6 GB < 8 GB) — the guard trips as designed.
+- `build-with-disk-guard.sh`: `bash -n` clean; dry-run harness
+  `./build-with-disk-guard.dry-run.sh` (mocked `docker`/`df`, no real
+  build, no VPS contact) 62/62 checks pass: refuse-below-floor,
+  prune-after-success, prune-after-failure, df/docker/builder/lock/
+  env failure modes, target selection, exit codes (0/1/2), no secret
+  values in output, and a static scan proving the only prune command
+  is the scoped `docker buildx prune --builder voicero-caldev --force`.
+  Live VPS A check 2026-11-23 ~22:40 PKT: `/` 41G free (80%), builder
+  cache 0B.
 - Secret scan: no real secrets in any file (only `CHANGE-ME-*`
   placeholders); no `.env` values printed anywhere in this run.

@@ -18,7 +18,7 @@
 
 MIN_RAM_MB=8192        # guard 9: available RAM >= 8 GB
 MAX_LOAD=2.0           # guard 9: 1-min load < 2.0
-MIN_DISK_GB=15         # guard 9: >= 15 GB free on /
+MIN_DISK_GB=25         # guard 9, raised by the 2026-11-23 disk incident (task 4.6): >= 25 GB free on /
 BUILD_LOCK=/tmp/voicero-caldev-build.lock
 
 fail=0
