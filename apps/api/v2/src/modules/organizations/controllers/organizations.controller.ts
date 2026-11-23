@@ -2,7 +2,6 @@ import { SUCCESS_STATUS } from "@calcom/platform-constants";
 import {
   CreateOAuthClientInput,
   CreateScheduleOutput_2024_06_11,
-  PlatformOAuthClientDto,
 } from "@calcom/platform-types";
 import {
   Body,
@@ -284,9 +283,13 @@ export class OrganizationsController {
     @GetUser() user: UserWithProfile
   ): Promise<GetOAuthClientsResponseDto> {
     const clients = await this.organizationOAuthClientsService.listOAuthClients(user, organizationId);
+    // Return the service result raw, mirroring the upstream oauth-clients
+    // controller: PlatformOAuthClientDto has no @Expose() decorators, so
+    // plainToClass(..., { strategy: "excludeAll" }) serialized every item
+    // to {}. The upstream transformOAuthClient already strips the secret.
     return {
       status: SUCCESS_STATUS,
-      data: plainToClass(PlatformOAuthClientDto, clients, { strategy: "excludeAll" }),
+      data: clients,
     };
   }
 
