@@ -81,9 +81,10 @@ def main():
     check("no untagged postgres / redis:latest",
           "image: postgres\n" not in compose_text and "redis:latest" not in compose_text)
 
-    # Guard 3: reduced heap build arg.
+    # Guard 3: reduced heap build arg (session 6, option B: 3072, down
+    # from 4096 after the session-5 cgroup OOM at the 6.5g builder cap).
     calcom_args = services["calcom"].get("build", {}).get("args", {})
-    check("MAX_OLD_SPACE_SIZE=4096 build arg", str(calcom_args.get("MAX_OLD_SPACE_SIZE")) == "4096")
+    check("MAX_OLD_SPACE_SIZE=3072 build arg", str(calcom_args.get("MAX_OLD_SPACE_SIZE")) == "3072")
 
     # Guard 8: logging caps everywhere.
     check("logging capped on every service",

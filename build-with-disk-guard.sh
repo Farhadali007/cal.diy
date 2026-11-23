@@ -142,7 +142,7 @@ check_builder() {
     log "Create it (once per host) with:"
     log "  docker buildx create --name voicero-caldev --driver docker-container --driver-opt network=voicero-caldev"
     log "  docker buildx inspect --bootstrap --builder voicero-caldev"
-    log "  docker update --memory 7g --memory-swap 7g --cpus 2.5 <builder-container>"
+    log "  docker update --memory 6.5g --memory-swap 6.5g --cpus 2 <builder-container>"
     return 1
   fi
   log "PASS builder: buildx builder '${BUILDER}' exists"
@@ -212,8 +212,13 @@ require_var() {
 
 build_web() {
   log "Building web image ${WEB_IMAGE} ..."
+  # Reduced footprint (session 6, option B): 3 GB heap — the 4 GB heap
+  # build OOMed the 6.5g builder cgroup in session 5 (the Next.js build
+  # process alone held 5.32 GiB anon RSS). The builder memory cap stays
+  # 6.5g; only the heap (and the builder CPU cap, 2.5 -> 2 via
+  # `docker update` on the host) is reduced.
   docker buildx build --builder "$BUILDER" --network host --load \
-    --build-arg MAX_OLD_SPACE_SIZE=4096 \
+    --build-arg MAX_OLD_SPACE_SIZE=3072 \
     --build-arg DATABASE_URL="$DATABASE_URL" \
     --build-arg DATABASE_DIRECT_URL="$DATABASE_URL" \
     --build-arg NEXT_PUBLIC_WEBAPP_URL="${NEXT_PUBLIC_WEBAPP_URL:-http://127.0.0.1:3300}" \
