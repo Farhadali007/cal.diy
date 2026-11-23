@@ -2,6 +2,7 @@ import { SUCCESS_STATUS } from "@calcom/platform-constants";
 import {
   CreateOAuthClientInput,
   CreateScheduleOutput_2024_06_11,
+  type PlatformOAuthClientDto,
 } from "@calcom/platform-types";
 import {
   Body,
@@ -49,7 +50,6 @@ import { API_KEY_OR_ACCESS_TOKEN_HEADER } from "@/lib/docs/headers";
 import { GetUser } from "@/modules/auth/decorators/get-user/get-user.decorator";
 import { ApiAuthGuard } from "@/modules/auth/guards/api-auth/api-auth.guard";
 import { CreateOAuthClientResponseDto } from "@/modules/oauth-clients/controllers/oauth-clients/responses/CreateOAuthClientResponse.dto";
-import { GetOAuthClientsResponseDto } from "@/modules/oauth-clients/controllers/oauth-clients/responses/GetOAuthClientsResponse.dto";
 import { OrganizationMembersService } from "@/modules/organizations/services/organization-members.service";
 import { OrganizationOAuthClientsService } from "@/modules/organizations/services/organization-oauth-clients.service";
 import { OrganizationOwnershipService } from "@/modules/organizations/services/organization-ownership.service";
@@ -281,15 +281,19 @@ export class OrganizationsController {
   async listOAuthClientsForOrganization(
     @Param("organizationId", ParseIntPipe) organizationId: number,
     @GetUser() user: UserWithProfile
-  ): Promise<GetOAuthClientsResponseDto> {
+  ): Promise<{ status: typeof SUCCESS_STATUS; data: Omit<PlatformOAuthClientDto, "secret">[] }> {
     const clients = await this.organizationOAuthClientsService.listOAuthClients(user, organizationId);
     // Return the service result raw, mirroring the upstream oauth-clients
     // controller: PlatformOAuthClientDto has no @Expose() decorators, so
     // plainToClass(..., { strategy: "excludeAll" }) serialized every item
-    // to {}. The upstream transformOAuthClient already strips the secret.
+    // to {}. BUT strip the secret first: the upstream transform includes
+    // the live client secret, and the secret is returned ONCE at creation
+    // — a list response must never expose it (proven live: the list secret
+    // matched the create-time secret byte for byte).
+    const clientsWithoutSecrets = clients.map(({ secret: _secret, ...safeClient }) => safeClient);
     return {
       status: SUCCESS_STATUS,
-      data: clients,
+      data: clientsWithoutSecrets,
     };
   }
 
