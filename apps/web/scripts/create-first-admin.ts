@@ -18,6 +18,7 @@
  */
 
 import process from "node:process";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { createFirstAdmin } from "../../../packages/features/auth/lib/createFirstAdmin";
 // The repo's Prisma client is generated to a custom output
 // (packages/prisma/generated/prisma — see the generator block in
@@ -86,7 +87,14 @@ function parseArgs(argv: string[]): CliArgs {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const prisma = new PrismaClient();
+  const databaseUrl = process.env.DATABASE_URL ?? "";
+  if (!databaseUrl) {
+    fail("$DATABASE_URL is required.", 2);
+  }
+  // Engine type `client` requires a driver adapter — the same PrismaPg
+  // construction packages/prisma/index.ts uses. No $extends: the gate must
+  // see every user, including ones the read extensions would hide.
+  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
   try {
     const result = await createFirstAdmin(prisma, args);
     if (args.quiet) {
