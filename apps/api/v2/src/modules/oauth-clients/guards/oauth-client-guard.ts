@@ -24,7 +24,7 @@ export class OAuthClientGuard implements CanActivate {
       throw new ForbiddenException("OAuthClientGuard - No OAuth client associated with the request.");
     }
 
-    if (!user || !organizationId) {
+    if (!user) {
       throw new ForbiddenException("OAuthClientGuard - No organization associated with the user.");
     }
 
@@ -34,7 +34,21 @@ export class OAuthClientGuard implements CanActivate {
       throw new NotFoundException("OAuthClientGuard - OAuth client not found.");
     }
 
-    const allowed = Boolean(user.isSystemAdmin || oAuthClient.organizationId === organizationId);
+    // System admins manage OAuth clients platform-wide (provisioning,
+    // health) and need no organization association: the old order threw
+    // "No organization associated with the user" for an admin with no org
+    // membership before the isSystemAdmin check below could run, so the
+    // admin path was unreachable. The client-existence check above still
+    // runs for everyone.
+    if (user.isSystemAdmin) {
+      return true;
+    }
+
+    if (!organizationId) {
+      throw new ForbiddenException("OAuthClientGuard - No organization associated with the user.");
+    }
+
+    const allowed = Boolean(oAuthClient.organizationId === organizationId);
     if (!allowed) {
       throw new ForbiddenException(
         `OAuthClientGuard - forbidden. oAuth client with id=${oAuthClientId} does not belong to the organization with id=${organizationId}.`
