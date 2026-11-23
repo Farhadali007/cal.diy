@@ -1,7 +1,7 @@
 import { SUCCESS_STATUS } from "@calcom/platform-constants";
 import {
   CreateOAuthClientInput,
-  CreateOAuthClientOutput,
+  CreateScheduleOutput_2024_06_11,
   PlatformOAuthClientDto,
 } from "@calcom/platform-types";
 import {
@@ -30,10 +30,6 @@ import {
   CreateOrganizationScheduleInputDto,
 } from "../inputs/organization-wiring.input";
 import { CreateOrganizationInputDto } from "../inputs/organizations.input";
-import {
-  OrganizationSuspensionDto,
-  OrganizationSuspensionResponseDto,
-} from "../outputs/organization-suspension.output";
 import { OrganizationOutputDto, OrganizationOutputResponseDto } from "../outputs/organization.output";
 import {
   OrganizationMemberDto,
@@ -45,6 +41,10 @@ import {
   ManagedOrganizationLinkResponseDto,
   ManagedOrganizationLinksResponseDto,
 } from "../outputs/organization-ownership.output";
+import {
+  OrganizationSuspensionDto,
+  OrganizationSuspensionResponseDto,
+} from "../outputs/organization-suspension.output";
 import { API_VERSIONS_VALUES } from "@/lib/api-versions";
 import { API_KEY_OR_ACCESS_TOKEN_HEADER } from "@/lib/docs/headers";
 import { GetUser } from "@/modules/auth/decorators/get-user/get-user.decorator";
@@ -54,11 +54,10 @@ import { GetOAuthClientsResponseDto } from "@/modules/oauth-clients/controllers/
 import { OrganizationMembersService } from "@/modules/organizations/services/organization-members.service";
 import { OrganizationOAuthClientsService } from "@/modules/organizations/services/organization-oauth-clients.service";
 import { OrganizationOwnershipService } from "@/modules/organizations/services/organization-ownership.service";
-import { OrganizationsService } from "@/modules/organizations/services/organizations.service";
 import { OrganizationSuspensionService } from "@/modules/organizations/services/organization-suspension.service";
 import { OrganizationWiringService } from "@/modules/organizations/services/organization-wiring.service";
+import { OrganizationsService } from "@/modules/organizations/services/organizations.service";
 import { UserWithProfile } from "@/modules/users/users.repository";
-import { CreateScheduleOutput_2024_06_11 } from "@calcom/platform-types";
 import { CreateEventTypeOutput_2024_06_14 } from "@/platform/event-types/event-types_2024_06_14/outputs/create-event-type.output";
 import { EventTypeResponseTransformPipe } from "@/platform/event-types/event-types_2024_06_14/pipes/event-type-response.transformer";
 
@@ -264,9 +263,12 @@ export class OrganizationsController {
       organizationId,
       body
     );
+    // Return the raw credentials, mirroring the upstream oauth-clients
+    // controller: CreateOAuthClientOutput has no @Expose() decorators, so
+    // plainToClass(..., { strategy: "excludeAll" }) serialized data to {}.
     return {
       status: SUCCESS_STATUS,
-      data: plainToClass(CreateOAuthClientOutput, credentials, { strategy: "excludeAll" }),
+      data: credentials,
     };
   }
 
@@ -337,7 +339,11 @@ export class OrganizationsController {
     @Body() body: CreateOrganizationScheduleInputDto,
     @GetUser() user: UserWithProfile
   ): Promise<CreateScheduleOutput_2024_06_11> {
-    const schedule = await this.organizationWiringService.getOrCreateDefaultSchedule(user, organizationId, body);
+    const schedule = await this.organizationWiringService.getOrCreateDefaultSchedule(
+      user,
+      organizationId,
+      body
+    );
     return {
       status: SUCCESS_STATUS,
       data: schedule,
@@ -356,7 +362,11 @@ export class OrganizationsController {
     @Body() body: CreateOrganizationEventTypeInputDto,
     @GetUser() user: UserWithProfile
   ): Promise<CreateEventTypeOutput_2024_06_14> {
-    const eventType = await this.organizationWiringService.createEventTypeForMember(user, organizationId, body);
+    const eventType = await this.organizationWiringService.createEventTypeForMember(
+      user,
+      organizationId,
+      body
+    );
     return {
       status: SUCCESS_STATUS,
       data: this.eventTypeResponseTransformPipe.transform(eventType),
