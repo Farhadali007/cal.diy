@@ -609,11 +609,11 @@ const nextConfig = (phase: string): NextConfig => {
           destination: "/apps/installed/calendar",
           permanent: true,
         },
-        {
-          source: "/settings/organizations/members",
-          destination: "/members",
-          permanent: true,
-        },
+        // VOICERO: the upstream redirect from /settings/organizations/members
+        // to /members was removed — its target does not exist in Cal.diy
+        // (the (main-nav)/members route has no page; it was removed with EE),
+        // so it 308'd our organization members page to a 404. Our members
+        // page lives at /settings/organizations/members (2.2b).
         {
           source: "/settings/admin/apps",
           destination: "/settings/admin/apps/calendar",
