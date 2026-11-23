@@ -33,6 +33,10 @@ jest.mock(
 );
 jest.mock("googleapis-common", () => ({
   JWT: MockJWT,
+  // The real google CalendarService chunk (loaded via CalendarManager's
+  // CalendarServiceMap) extends OAuth2Client at module load time; the mock
+  // must provide a constructible class or the suite crashes the jest process.
+  OAuth2Client: class MockOAuth2Client {},
 }));
 jest.mock("@googleapis/calendar", () => ({
   calendar_v3: {
