@@ -39,9 +39,13 @@ operator sets one through the single-use link.
 
 ## Running it against the dev install (no rebuild needed)
 
-The script is self-contained (imports only `@prisma/client`): compile it
-in the sandbox and run the output inside the web container, which already
-has the Prisma client and `DATABASE_URL`:
+The script imports the generated Prisma client directly (the repo's client
+is generated to `packages/prisma/generated/prisma`, so `@prisma/client`'s
+default entry is un-generated and throws at runtime — the CLI follows the
+same import `packages/prisma/index.ts` uses). Compile it in the sandbox —
+tsc follows the import and emits the generated client tree alongside it —
+and run the output inside the web container, which already has the Prisma
+runtime (`@prisma/client/runtime/*`) and `DATABASE_URL`:
 
 ```bash
 # in the fork checkout (sandbox)
@@ -51,7 +55,7 @@ npx tsc apps/web/scripts/create-first-admin.ts \
 docker cp /tmp/first-admin root@VPS:/tmp/first-admin   # then on the VPS:
 docker cp /tmp/first-admin/. voicero-caldev-calcom:/calcom/scripts-voicero/
 docker exec voicero-caldev-calcom node \
-  /calcom/scripts-voicero/create-first-admin.js \
+  /calcom/scripts-voicero/apps/web/scripts/create-first-admin.js \
   --email admin@voicero.io --name "VOICERO Admin" --username voicero-admin \
   --webapp-url http://127.0.0.1:3300 --quiet
 ```

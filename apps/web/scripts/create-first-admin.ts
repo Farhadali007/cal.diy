@@ -18,8 +18,13 @@
  */
 
 import process from "node:process";
-import { PrismaClient } from "@prisma/client";
 import { createFirstAdmin } from "../../../packages/features/auth/lib/createFirstAdmin";
+// The repo's Prisma client is generated to a custom output
+// (packages/prisma/generated/prisma — see the generator block in
+// packages/prisma/schema.prisma), so `@prisma/client`'s default entry is
+// un-generated and throws at runtime. Import the generated client directly,
+// the same way packages/prisma/index.ts does.
+import { PrismaClient } from "../../../packages/prisma/generated/prisma/client";
 
 type CliArgs = {
   email: string;
