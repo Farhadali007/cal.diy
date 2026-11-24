@@ -210,6 +210,7 @@ exit_code=$(run_wrapper "$D" MOCK_DF_GB=38 MOCK_BUILD_EXIT=1 -- all)
 [ "$(count_in_log "$D" "BUILD tag=voicero-caldev-calcom-api:dev")" -eq 0 ] && pass "c4: api build skipped after web failure" || fail "c4: api build ran after web failure"
 [ "$(count_in_log "$D" "buildx prune")" -eq 1 ] && pass "c4: prune ran after failed build" || fail "c4: prune missing after failed build"
 grep -q "BUILD FAILED" "$D/out.txt" && pass "c4: failure reported" || fail "c4: no failure report"
+grep -q "was still pruned" "$D/out.txt" && pass "c4: RESULT reports the prune succeeded" || fail "c4: RESULT does not report the prune"
 assert_no_canary "$D" "c4"
 assert_lock_released "$D" "c4"
 
@@ -308,6 +309,19 @@ grep -q -F "MAX_OLD_SPACE_SIZE=3072" "$D/docker.log" && pass "c15: web build pas
 grep -q -F "MAX_OLD_SPACE_SIZE=4096" "$D/docker.log" && fail "c15: stale 4096 heap arg still passed" || pass "c15: no stale 4096 heap arg"
 assert_no_canary "$D" "c15"
 assert_lock_released "$D" "c15"
+
+# 16. Build fails AND prune fails (session 6 flag): the RESULT line must
+# NOT claim the cache was pruned — it must report the prune failure and
+# print the manual prune command. Exit code stays the build's.
+D="$TMP_BASE/c16-buildfail-prunefail"; setup_case "$D"
+exit_code=$(run_wrapper "$D" MOCK_DF_GB=38 MOCK_BUILD_EXIT=1 MOCK_PRUNE_EXIT=1 -- web)
+[ "$exit_code" -eq 1 ] && pass "c16 build+prune fail: exit=1 (build's code)" || fail "c16 build+prune fail: exit=$exit_code (expected 1)"
+grep -q "BUILD FAILED" "$D/out.txt" && pass "c16: failure reported" || fail "c16: no failure report"
+grep -q "prune ALSO FAILED" "$D/out.txt" && pass "c16: RESULT reports the prune failure" || fail "c16: RESULT does not report the prune failure"
+grep -q "was still pruned" "$D/out.txt" && fail "c16: RESULT falsely claims the cache was pruned" || pass "c16: RESULT does not falsely claim a prune"
+grep -q -F "docker buildx prune --builder voicero-caldev --force" "$D/out.txt" && pass "c16: manual prune command printed" || fail "c16: no manual prune command"
+assert_no_canary "$D" "c16"
+assert_lock_released "$D" "c16"
 
 echo
 echo "dry-run result: ${PASS_COUNT} passed, ${FAIL_COUNT} failed"

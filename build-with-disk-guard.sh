@@ -214,9 +214,13 @@ build_web() {
   log "Building web image ${WEB_IMAGE} ..."
   # Reduced footprint (session 6, option B): 3 GB heap — the 4 GB heap
   # build OOMed the 6.5g builder cgroup in session 5 (the Next.js build
-  # process alone held 5.32 GiB anon RSS). The builder memory cap stays
-  # 6.5g; only the heap (and the builder CPU cap, 2.5 -> 2 via
-  # `docker update` on the host) is reduced.
+  # process alone held 5.32 GiB anon RSS). Session 6 measured the heap
+  # cut as ineffective: next-build still held 5.23 GiB anon RSS and the
+  # host itself ran out of memory (global OOM), so the heap is NOT the
+  # lever — the builder memory cap is. Session 7 retries with the cap
+  # raised to 7g (via `docker update` on the host) and the wf2 scratch
+  # pool stopped; the standing cap returns to 6.5g after the attempt.
+  # The builder CPU cap is 2 (2.5 -> 2 via `docker update` on the host).
   docker buildx build --builder "$BUILDER" --network host --load \
     --build-arg MAX_OLD_SPACE_SIZE=3072 \
     --build-arg DATABASE_URL="$DATABASE_URL" \
@@ -319,7 +323,16 @@ main() {
   log "Disk after build + prune: ${free_gb} GB free on /"
 
   if [ "$build_exit" -ne 0 ]; then
-    log "RESULT: BUILD FAILED (exit ${build_exit}) — builder cache was still pruned."
+    if [ "$prune_exit" -ne 0 ]; then
+      # Session 6 flag: the old line claimed "builder cache was still
+      # pruned" unconditionally, even when the prune had just failed
+      # (docker.sock error) — the RESULT line contradicted the FAIL
+      # prune line directly above it. Report the prune outcome honestly.
+      log "RESULT: BUILD FAILED (exit ${build_exit}) — and the post-build prune ALSO FAILED. Run this before the next build:"
+      log "  docker buildx prune --builder ${BUILDER} --force"
+    else
+      log "RESULT: BUILD FAILED (exit ${build_exit}) — builder cache was still pruned."
+    fi
     return "$build_exit"
   fi
   if [ "$prune_exit" -ne 0 ]; then
