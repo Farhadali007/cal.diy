@@ -48,7 +48,7 @@ that per IMPLEMENTATION-PLAN.md §C:
 - `logging.max-size 10m / max-file 3` on every container (guard 8).
 - DB credentials come from `.env.dev` with fail-fast `${VAR:?}`
   interpolation — no hardcoded passwords anywhere.
-- `MAX_OLD_SPACE_SIZE=3072` build arg (guard 3, down from 4096 in session 6 / option B after the session-5 cgroup OOM; 6144 upstream).
+- `MAX_OLD_SPACE_SIZE=4096` build arg (guard 3, restored in session 8 after the session-6 cut to 3072 starved the TypeScript type-check in session 7; 6144 upstream).
 - `NEXT_PUBLIC_DISABLE_SIGNUP=true` baked into the web build and the
   runtime env; no seed service, no seed env var — the dev DB starts
   empty.

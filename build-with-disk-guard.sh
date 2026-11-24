@@ -212,17 +212,19 @@ require_var() {
 
 build_web() {
   log "Building web image ${WEB_IMAGE} ..."
-  # Reduced footprint (session 6, option B): 3 GB heap — the 4 GB heap
-  # build OOMed the 6.5g builder cgroup in session 5 (the Next.js build
-  # process alone held 5.32 GiB anon RSS). Session 6 measured the heap
-  # cut as ineffective: next-build still held 5.23 GiB anon RSS and the
-  # host itself ran out of memory (global OOM), so the heap is NOT the
-  # lever — the builder memory cap is. Session 7 retries with the cap
-  # raised to 7g (via `docker update` on the host) and the wf2 scratch
-  # pool stopped; the standing cap returns to 6.5g after the attempt.
+  # Heap restored to 4 GB (session 8): the session-6 cut to 3 GB starved
+  # the TypeScript type-check, which failed on the JS heap limit in
+  # session 7 ("Failed to type check", exit 1) even though the memory
+  # wall was solved (builder peaked 6.885 GiB/7g, host low 3.66 GB, no
+  # OOM). The heap is NOT the lever — the builder memory cap is: the
+  # session-5 cgroup OOM (next-build 5.32 GiB anon RSS) and the
+  # session-6 host-global OOM (5.23 GiB) happened at 4 GB and 3 GB heap
+  # alike. Session 8 retries at 4 GB heap with the cap raised to 8g
+  # (via `docker update` on the host) and the wf2 scratch pool stopped;
+  # the standing cap returns to 6.5g after the attempt.
   # The builder CPU cap is 2 (2.5 -> 2 via `docker update` on the host).
   docker buildx build --builder "$BUILDER" --network host --load \
-    --build-arg MAX_OLD_SPACE_SIZE=3072 \
+    --build-arg MAX_OLD_SPACE_SIZE=4096 \
     --build-arg DATABASE_URL="$DATABASE_URL" \
     --build-arg DATABASE_DIRECT_URL="$DATABASE_URL" \
     --build-arg NEXT_PUBLIC_WEBAPP_URL="${NEXT_PUBLIC_WEBAPP_URL:-http://127.0.0.1:3300}" \

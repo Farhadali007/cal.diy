@@ -299,14 +299,15 @@ grep -q -F 'docker buildx prune --builder "$BUILDER" --force' "$WRAPPER_SRC" \
   || fail "c14: scoped prune command not found"
 [ "$(grep -c "buildx prune" "$WRAPPER_SRC")" -ge 1 ] && pass "c14: prune command present" || fail "c14: prune command missing"
 
-# 15. Reduced footprint (session 6, option B): the web build passes the
-# 3 GB heap build arg — guards the session-5 OOM fix against regression
-# (the 4 GB heap build OOMed the 6.5g builder cgroup).
+# 15. Heap restore (session 8): the web build passes the 4 GB heap build
+# arg — the session-6 cut to 3 GB starved the TypeScript type-check,
+# which failed on the JS heap limit in session 7 ("Failed to type
+# check"). The heap is not the OOM lever; the builder cap is.
 D="$TMP_BASE/c15-heap"; setup_case "$D"
 exit_code=$(run_wrapper "$D" MOCK_DF_GB=38 -- web)
-[ "$exit_code" -eq 0 ] && pass "c15 reduced-heap: web-only run exit=0" || fail "c15 reduced-heap: exit=$exit_code (expected 0)"
-grep -q -F "MAX_OLD_SPACE_SIZE=3072" "$D/docker.log" && pass "c15: web build passes MAX_OLD_SPACE_SIZE=3072" || fail "c15: web build did not pass MAX_OLD_SPACE_SIZE=3072"
-grep -q -F "MAX_OLD_SPACE_SIZE=4096" "$D/docker.log" && fail "c15: stale 4096 heap arg still passed" || pass "c15: no stale 4096 heap arg"
+[ "$exit_code" -eq 0 ] && pass "c15 restored-heap: web-only run exit=0" || fail "c15 restored-heap: exit=$exit_code (expected 0)"
+grep -q -F "MAX_OLD_SPACE_SIZE=4096" "$D/docker.log" && pass "c15: web build passes MAX_OLD_SPACE_SIZE=4096" || fail "c15: web build did not pass MAX_OLD_SPACE_SIZE=4096"
+grep -q -F "MAX_OLD_SPACE_SIZE=3072" "$D/docker.log" && fail "c15: stale 3072 heap arg still passed" || pass "c15: no stale 3072 heap arg"
 assert_no_canary "$D" "c15"
 assert_lock_released "$D" "c15"
 
